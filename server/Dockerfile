@@ -1,6 +1,6 @@
 FROM node:20-slim
 
-# Install canvas dependencies (cairo, pango, etc.) and emoji fonts
+# Install canvas dependencies (cairo, pango, etc.) and symbol fonts
 RUN apt-get update && apt-get install -y \
     build-essential \
     libcairo2-dev \
@@ -8,7 +8,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libgif-dev \
     librsvg2-dev \
-    fonts-noto-color-emoji \
+    fonts-dejavu-core \
+    fonts-symbola \
     && rm -rf /var/lib/apt/lists/* \
     && fc-cache -f -v
 

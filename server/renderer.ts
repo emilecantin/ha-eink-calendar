@@ -119,24 +119,25 @@ export interface DayForecast {
   tempLow: number | null;
 }
 
-// Weather icon mapping (condition -> character)
+// Weather icon mapping (condition -> Unicode symbol)
+// These render with Symbola or DejaVu Sans fonts
 const WEATHER_ICONS: { [condition: string]: string } = {
-  "sunny": "☀",
+  "sunny": "☀",        // U+2600
   "clear": "☀",
-  "clear-night": "☀",
-  "partlycloudy": "⛅",
-  "cloudy": "☁",
-  "fog": "🌫",
-  "hail": "🌨",
-  "lightning": "⚡",
-  "lightning-rainy": "⛈",
-  "pouring": "🌧",
-  "rainy": "🌧",
-  "snowy": "❄",
-  "snowy-rainy": "🌨",
-  "windy": "💨",
-  "windy-variant": "💨",
-  "exceptional": "⚠",
+  "clear-night": "☽",  // U+263D
+  "partlycloudy": "⛅", // U+26C5
+  "cloudy": "☁",       // U+2601
+  "fog": "▒",          // U+2592 (medium shade)
+  "hail": "☁",
+  "lightning": "⚡",    // U+26A1
+  "lightning-rainy": "⛈", // U+26C8
+  "pouring": "☔",      // U+2614
+  "rainy": "☂",        // U+2602
+  "snowy": "❄",        // U+2744
+  "snowy-rainy": "❄",
+  "windy": "≋",        // U+224B
+  "windy-variant": "≋",
+  "exceptional": "⚠",  // U+26A0
 };
 
 // Get weather icon for a condition
@@ -686,7 +687,7 @@ function drawLandscapeTodaySection(
       }
 
       // Large weather icon to the left of temps
-      ctx.font = "44px Inter";
+      ctx.font = "44px Symbola, DejaVu Sans";
       const icon = getWeatherIcon(todayForecast.condition);
       const iconMetrics = ctx.measureText(icon);
       const iconX = tempWidth > 0
@@ -989,7 +990,7 @@ function drawLandscapeWeekSection(
         }
 
         // Weather icon to the left of temps
-        ctx.font = "32px Inter";
+        ctx.font = "32px Symbola, DejaVu Sans";
         const icon = getWeatherIcon(dayForecast.condition);
         const iconMetrics = ctx.measureText(icon);
         const iconX = tempWidth > 0
