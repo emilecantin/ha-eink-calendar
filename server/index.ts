@@ -12,7 +12,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const port = process.env.PORT || 4000;
-const CONFIG_FILE = process.env.CONFIG_PATH || "./.epcal-config.json";
+const CONFIG_FILE = process.env.CONFIG_PATH || "./epcal-config.json";
 
 // Add-on mode: HA connection comes from environment (set by Supervisor)
 const ADDON_MODE = !!(process.env.HA_URL && process.env.HA_TOKEN);

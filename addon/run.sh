@@ -42,12 +42,12 @@ else
 
     # Use environment variables or defaults
     export PORT="${PORT:-4000}"
-    export CONFIG_PATH="${CONFIG_PATH:-/app/config/.epcal-config.json}"
+    export CONFIG_PATH="${CONFIG_PATH:-/app/config/epcal-config.json}"
 
     echo "Config file: ${CONFIG_PATH}"
     echo "Port: ${PORT}"
 fi
 
-# Start the server
+# Start the server (using pre-compiled JS)
 echo "Starting server on port ${PORT}..."
-exec npx ts-node index.ts
+exec node dist/index.js

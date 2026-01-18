@@ -25,8 +25,11 @@ RUN npm ci
 COPY *.ts ./
 COPY fonts/ ./fonts/
 
+# Pre-compile TypeScript to JavaScript
+RUN npx tsc --outDir ./dist --esModuleInterop --module commonjs --target ES2020 --resolveJsonModule *.ts
+
 # Expose port
 EXPOSE 4000
 
-# Run with ts-node
-CMD ["npx", "ts-node", "index.ts"]
+# Run pre-compiled JavaScript
+CMD ["node", "dist/index.js"]

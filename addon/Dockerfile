@@ -37,6 +37,9 @@ RUN npm ci
 COPY server/*.ts ./
 COPY server/fonts/ ./fonts/
 
+# Pre-compile TypeScript to JavaScript
+RUN npx tsc --outDir ./dist --esModuleInterop --module commonjs --target ES2020 --resolveJsonModule *.ts
+
 # Copy startup script
 COPY addon/run.sh /run.sh
 RUN chmod +x /run.sh
