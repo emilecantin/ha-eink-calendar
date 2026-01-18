@@ -7,4 +7,5 @@ services:
       - ./config:/app/config
     environment:
       - CONFIG_PATH=/app/config/.epcal-config.json
+      - TZ=America/Toronto
     restart: unless-stopped
