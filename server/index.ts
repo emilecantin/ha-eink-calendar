@@ -12,7 +12,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 const port = process.env.PORT || 4000;
-const CONFIG_FILE = "./.epcal-config.json";
+const CONFIG_FILE = process.env.CONFIG_PATH || "./.epcal-config.json";
 
 // Get server timezone offset string (e.g., "-05:00")
 function getServerTimezoneOffset(): string {

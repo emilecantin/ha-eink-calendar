@@ -12,6 +12,7 @@ npm-debug.log*
 
 # Server
 server/.epcal-config.json
+config/
 
 # Arduino/PlatformIO
 Arduino/epcal/.pio/

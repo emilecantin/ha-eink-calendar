@@ -43,24 +43,27 @@ Waveshare 12.48" E-Paper Display
 
 ## Setup
 
-### 1. Server Setup
+### 1. Server Setup (Docker)
+
+```bash
+docker-compose up -d
+```
+
+Visit `http://localhost:4000` to configure:
+- Home Assistant URL and long-lived access token
+- Select calendars to display
+- Assign icons and display names to calendars
+- Select weather entity for forecast
+
+Configuration is persisted in `./config/.epcal-config.json`.
+
+#### Alternative: Run without Docker
 
 ```bash
 cd server
 npm install
-```
-
-Create configuration by visiting `http://localhost:4000` after starting:
-
-```bash
 npm start
 ```
-
-Configure:
-- Home Assistant URL and token
-- Select calendars to display
-- Assign icons and display names to calendars
-- Select weather entity for forecast
 
 ### 2. ESP32 Setup
 

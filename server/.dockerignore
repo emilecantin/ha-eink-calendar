@@ -1,0 +1,5 @@
+node_modules
+.epcal-config.json
+.env
+.env.local
+*.log

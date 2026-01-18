@@ -1,0 +1,10 @@
+services:
+  epcal:
+    build: ./server
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./config:/app/config
+    environment:
+      - CONFIG_PATH=/app/config/.epcal-config.json
+    restart: unless-stopped

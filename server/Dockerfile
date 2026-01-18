@@ -1,0 +1,29 @@
+FROM node:20-slim
+
+# Install canvas dependencies (cairo, pango, etc.)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libcairo2-dev \
+    libpango1.0-dev \
+    libjpeg-dev \
+    libgif-dev \
+    librsvg2-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy source files and fonts
+COPY *.ts ./
+COPY fonts/ ./fonts/
+
+# Expose port
+EXPOSE 4000
+
+# Run with ts-node
+CMD ["npx", "ts-node", "index.ts"]
