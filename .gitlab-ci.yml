@@ -16,14 +16,17 @@ build-addon:
   services:
     - docker:24-dind
   variables:
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_CERTDIR: ""
+    DOCKER_HOST: tcp://docker:2375
+    DOCKER_DRIVER: overlay2
     DOCKER_BUILDKIT: "1"
   before_script:
     - docker login -u ${CI_REGISTRY_USER} -p ${CI_REGISTRY_PASSWORD} ${CI_REGISTRY}
     # Set up QEMU for multi-arch builds
     - docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-    # Create and use buildx builder
-    - docker buildx create --name multiarch --driver docker-container --use
+    # Create buildx builder (use docker-container driver with explicit endpoint)
+    - docker context create builder-context --docker "host=tcp://docker:2375"
+    - docker buildx create --name multiarch --driver docker-container --use builder-context
     - docker buildx inspect --bootstrap
   script:
     # Determine version tag
