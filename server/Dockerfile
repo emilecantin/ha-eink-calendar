@@ -28,6 +28,9 @@ COPY fonts/ ./fonts/
 # Pre-compile TypeScript to JavaScript
 RUN npx tsc --outDir ./dist --esModuleInterop --module commonjs --target ES2020 --resolveJsonModule *.ts
 
+# Copy fonts to dist folder (renderer.js uses __dirname which is /app/dist)
+RUN cp -r ./fonts ./dist/fonts
+
 # Expose port
 EXPOSE 4000
 
