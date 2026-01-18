@@ -37,12 +37,13 @@ interface Config {
   calendarNames?: { [entityId: string]: string }; // Calendar display names for legend
   layout?: "portrait" | "landscape"; // Display layout mode
   weatherEntity?: string; // Weather entity for forecast display
+  showLegend?: boolean; // Show calendar legend on display
 }
 
 // Layout options for UI
 const LAYOUT_OPTIONS = [
-  { value: "portrait", label: "Portrait (actuel)", description: "Today en haut, semaine au milieu, à venir en bas" },
-  { value: "landscape", label: "Paysage (côte à côte)", description: "Today à gauche, 6 jours + à venir à droite" },
+  { value: "landscape", label: "Paysage (recommandé)", description: "Aujourd'hui à gauche, 6 jours + à venir à droite" },
+  { value: "portrait", label: "Portrait", description: "Aujourd'hui en haut, semaine au milieu, à venir en bas" },
 ];
 
 // Available icons for calendars (single characters)
@@ -66,20 +67,19 @@ function saveConfig(config: Config): void {
 // Get current config
 let config = loadConfig();
 
-// Build legend from config
-function buildLegend(): LegendItem[] {
-  if (!config?.enabledCalendars || !config?.calendarIcons) {
+// Build legend from config - calendarIds should match the calendars used for events
+function buildLegend(calendarIds: string[]): LegendItem[] {
+  if (config?.showLegend === false || calendarIds.length === 0) {
     return [];
   }
-  const icons = config.calendarIcons;
-  const names = config.calendarNames || {};
 
-  return config.enabledCalendars
-    .filter((entityId) => icons[entityId])
-    .map((entityId) => ({
-      icon: icons[entityId],
-      name: names[entityId] || entityId.replace("calendar.", "").replace(/_/g, " "),
-    }));
+  const icons = config?.calendarIcons || {};
+  const names = config?.calendarNames || {};
+
+  return calendarIds.map((entityId, index) => ({
+    icon: icons[entityId] || CALENDAR_ICONS[index % CALENDAR_ICONS.length],
+    name: names[entityId] || entityId.replace("calendar.", "").replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+  }));
 }
 
 // French translations
@@ -189,8 +189,15 @@ function extractTimezoneOffset(dateTimeStr: string): string | null {
 let detectedEventTimezone: string | null = null;
 
 // Fetch events from enabled calendars only
-async function fetchAllEvents(): Promise<CalendarEvent[]> {
-  if (!config) return [];
+// Returns events and the list of calendar IDs that were fetched
+async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds: string[] }> {
+  if (!config) return { events: [], calendarIds: [] };
+
+  // Require explicit calendar selection - no calendars = no events
+  const enabledCalendars = config.enabledCalendars;
+  if (!enabledCalendars || enabledCalendars.length === 0) {
+    return { events: [], calendarIds: [] };
+  }
 
   try {
     const calendars = await fetchCalendars();
@@ -200,11 +207,8 @@ async function fetchAllEvents(): Promise<CalendarEvent[]> {
 
     const allEvents: CalendarEvent[] = [];
 
-    // Filter to enabled calendars only (if configured)
-    const enabledCalendars = config.enabledCalendars;
-    const calendarsToFetch = enabledCalendars && enabledCalendars.length > 0
-      ? calendars.filter(c => enabledCalendars.includes(c.entity_id))
-      : calendars; // If no selection, fetch all (backwards compatible)
+    // Filter to enabled calendars only
+    const calendarsToFetch = calendars.filter(c => enabledCalendars.includes(c.entity_id));
 
     // Ensure all calendars have icons assigned
     let configChanged = false;
@@ -272,10 +276,10 @@ async function fetchAllEvents(): Promise<CalendarEvent[]> {
       }
     }
 
-    return allEvents;
+    return { events: allEvents, calendarIds: calendarsToFetch.map(c => c.entity_id) };
   } catch (e) {
     console.error("Error fetching events:", e);
-    return [];
+    return { events: [], calendarIds: [] };
   }
 }
 
@@ -287,8 +291,8 @@ app.get("/", async (req, res) => {
   const message = req.query.message as string | undefined;
   const error = req.query.error as string | undefined;
 
-  // Fetch events to detect timezone
-  if (isConnected) {
+  // Fetch events to detect timezone (if any calendars are enabled)
+  if (isConnected && config?.enabledCalendars?.length) {
     await fetchAllEvents();
   }
 
@@ -528,6 +532,19 @@ app.get("/", async (req, res) => {
     .layout-option input { position: absolute; opacity: 0; pointer-events: none; }
     .layout-label { font-weight: 600; color: #333; }
     .layout-desc { font-size: 13px; color: #666; }
+    .layout-checkbox {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 15px 0;
+      font-size: 14px;
+      color: #333;
+    }
+    .layout-checkbox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
     .collapsible {
       background: white;
       border-radius: 12px;
@@ -575,12 +592,18 @@ app.get("/", async (req, res) => {
   <div class="status ${isConnected ? 'connected' : isConfigured ? 'disconnected' : 'not-configured'}">
     <span class="status-dot"></span>
     ${isConnected ? i18n.statusConnected : isConfigured ? i18n.statusNotConnected : i18n.statusNotConfigured}
-    ${isConnected ? `<span class="timezone-info">Serveur: ${serverTzName} (${serverTz})</span>` : ''}
+    ${isConnected ? `<span class="timezone-info">Heures affichées en ${serverTzName}</span>` : ''}
   </div>
 
   ${tzMismatch ? `
   <div class="message warning">
     ⚠️ Les événements du calendrier sont en fuseau horaire ${eventTz}, mais le serveur est en ${serverTz} (${serverTzName}). Les heures affichées pourraient être incorrectes.
+  </div>
+  ` : ''}
+
+  ${isConnected && (!config?.enabledCalendars || config.enabledCalendars.length === 0) ? `
+  <div class="message warning">
+    ⚠️ Aucun calendrier n'est activé. Sélectionnez au moins un calendrier ci-dessous pour afficher des événements.
   </div>
   ` : ''}
 
@@ -601,6 +624,19 @@ app.get("/", async (req, res) => {
                  value="${config?.haToken || ''}" required>
           <small>Créer dans Home Assistant: Profil → Tokens d'accès longue durée</small>
         </div>
+        ${weatherEntities.length > 0 ? `
+        <div class="form-group">
+          <label for="weather-entity">Entité météo pour les prévisions:</label>
+          <select name="weatherEntity" id="weather-entity" class="form-control">
+            <option value="">-- Aucune --</option>
+            ${weatherEntities.map(w => `
+              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? 'selected' : ''}>
+                ${w.name} (${w.entity_id})
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        ` : ''}
         <button type="submit" class="btn btn-primary">${i18n.configSave}</button>
       </form>
     </div>
@@ -625,14 +661,18 @@ app.get("/", async (req, res) => {
     <form action="/layout" method="POST">
       <div class="layout-options">
         ${LAYOUT_OPTIONS.map(opt => `
-          <label class="layout-option ${(config?.layout || 'portrait') === opt.value ? 'selected' : ''}">
-            <input type="radio" name="layout" value="${opt.value}" ${(config?.layout || 'portrait') === opt.value ? 'checked' : ''}>
+          <label class="layout-option ${(config?.layout || 'landscape') === opt.value ? 'selected' : ''}">
+            <input type="radio" name="layout" value="${opt.value}" ${(config?.layout || 'landscape') === opt.value ? 'checked' : ''}>
             <span class="layout-label">${opt.label}</span>
             <span class="layout-desc">${opt.description}</span>
           </label>
         `).join('')}
       </div>
-      <button type="submit" class="btn btn-primary">Enregistrer la disposition</button>
+      <label class="layout-checkbox">
+        <input type="checkbox" name="showLegend" value="true" ${config?.showLegend !== false ? 'checked' : ''}>
+        Afficher la légende des calendriers
+      </label>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
     </form>
     <script>
       document.querySelectorAll('.layout-option input').forEach(radio => {
@@ -645,25 +685,6 @@ app.get("/", async (req, res) => {
   </div>
   ` : ''}
 
-  ${weatherEntities.length > 0 ? `
-  <div class="section">
-    <h2>Météo</h2>
-    <form action="/weather" method="POST">
-      <div class="form-group">
-        <label for="weather-entity">Entité météo pour les prévisions:</label>
-        <select name="weatherEntity" id="weather-entity" class="form-control">
-          <option value="">-- Aucune --</option>
-          ${weatherEntities.map(w => `
-            <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? 'selected' : ''}>
-              ${w.name} (${w.entity_id})
-            </option>
-          `).join('')}
-        </select>
-      </div>
-      <button type="submit" class="btn btn-primary">Enregistrer</button>
-    </form>
-  </div>
-  ` : ''}
 
   ${calendars.length > 0 ? `
   <div class="section">
@@ -686,10 +707,10 @@ app.get("/", async (req, res) => {
             return a.name.localeCompare(b.name);
           });
           return sortedCalendars.map((c, index) => {
-            const isEnabled = !config?.enabledCalendars || config.enabledCalendars.length === 0 || config.enabledCalendars.includes(c.entity_id);
+            const isEnabled = config?.enabledCalendars?.includes(c.entity_id) || false;
             const currentIcon = config?.calendarIcons?.[c.entity_id] || CALENDAR_ICONS[0];
             const currentName = config?.calendarNames?.[c.entity_id] || "";
-            const placeholder = c.entity_id.replace("calendar.", "").replace(/_/g, " ");
+            const placeholder = c.entity_id.replace("calendar.", "").replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
             return `
             <li data-entity-id="${c.entity_id}">
               <div class="calendar-order-buttons">
@@ -754,6 +775,12 @@ app.get("/", async (req, res) => {
       <li><a href="/calendar/icon-test">/calendar/icon-test</a> <span class="endpoint-desc">- Test d'alignement des icônes</span></li>
     </ul>
   </div>
+  <script>
+    // Clean up URL after showing message
+    if (window.location.search.includes('message=') || window.location.search.includes('error=')) {
+      history.replaceState(null, '', window.location.pathname);
+    }
+  </script>
 </body>
 </html>`;
 
@@ -763,14 +790,19 @@ app.get("/", async (req, res) => {
 
 // Handle config form submission
 app.post("/config", async (req, res) => {
-  const { haUrl, haToken } = req.body;
+  const { haUrl, haToken, weatherEntity } = req.body;
 
   if (!haUrl || !haToken) {
     return res.redirect("/?error=" + encodeURIComponent("URL et token requis"));
   }
 
   // Test the connection before saving
-  const newConfig: Config = { haUrl: haUrl.replace(/\/$/, ''), haToken };
+  const newConfig: Config = {
+    ...config,  // Preserve existing settings (calendars, layout, etc.)
+    haUrl: haUrl.replace(/\/$/, ''),
+    haToken,
+    weatherEntity: weatherEntity || undefined,
+  };
 
   try {
     const response = await fetch(`${newConfig.haUrl}/api/`, {
@@ -808,31 +840,18 @@ app.post("/layout", async (req, res) => {
   const layout = req.body.layout as "portrait" | "landscape";
   if (layout && (layout === "portrait" || layout === "landscape")) {
     config.layout = layout;
-    saveConfig(config);
-
-    // Clear render cache to reflect changes
-    cachedRender = null;
-    cacheTimestamp = null;
   }
 
-  res.redirect("/?message=" + encodeURIComponent("Disposition enregistrée"));
-});
+  // Checkbox: present in body if checked, absent if unchecked
+  config.showLegend = req.body.showLegend === "true";
 
-// Handle weather entity selection
-app.post("/weather", async (req, res) => {
-  if (!config) {
-    return res.redirect("/?error=" + encodeURIComponent("Configuration requise"));
-  }
-
-  const weatherEntity = req.body.weatherEntity as string;
-  config.weatherEntity = weatherEntity || undefined;
   saveConfig(config);
 
   // Clear render cache to reflect changes
   cachedRender = null;
   cacheTimestamp = null;
 
-  res.redirect("/?message=" + encodeURIComponent("Météo enregistrée"));
+  res.redirect("/?message=" + encodeURIComponent("Disposition enregistrée"));
 });
 
 // Handle calendar selection form submission
@@ -906,8 +925,8 @@ app.get("/calendars", async (_req, res) => {
 // Debug endpoint to list events
 app.get("/events", async (_req, res) => {
   try {
-    const events = await fetchAllEvents();
-    res.json(events);
+    const { events, calendarIds } = await fetchAllEvents();
+    res.json({ events, calendarIds });
   } catch (e) {
     console.error("Error:", e);
     res.status(500).json({ error: "Failed to fetch events" });
@@ -1087,12 +1106,12 @@ async function getOrRenderCalendar(): Promise<RenderedCalendar> {
 
   // Fetch events and weather, then render
   console.log("Rendering calendar...");
-  const events = await fetchAllEvents();
-  const legend = buildLegend();
+  const { events, calendarIds } = await fetchAllEvents();
+  const legend = buildLegend(calendarIds);
   const weather = await getWeatherForRendering();
-  cachedRender = renderCalendar(events, now, config?.layout || "portrait", legend, weather);
+  cachedRender = renderCalendar(events, now, config?.layout || "landscape", legend, weather);
   cacheTimestamp = now;
-  console.log(`Rendered calendar with ${events.length} events, ${weather.length} weather days, ETag: ${cachedRender.etag}`);
+  console.log(`Rendered calendar with ${events.length} events, ${calendarIds.length} calendars, ${weather.length} weather days, ETag: ${cachedRender.etag}`);
 
   return cachedRender;
 }
@@ -1106,8 +1125,8 @@ async function getOrRenderCalendar(): Promise<RenderedCalendar> {
 //   ?debug=no-upcoming - Events in Today and 6-day, but nothing in À venir
 app.get("/calendar/preview", async (req, res) => {
   try {
-    let events = await fetchAllEvents();
-    const legend = buildLegend();
+    let { events, calendarIds } = await fetchAllEvents();
+    const legend = buildLegend(calendarIds);
     const now = new Date();
     const debugMode = req.query.debug as string;
 
@@ -1246,7 +1265,7 @@ app.get("/calendar/preview", async (req, res) => {
     }
 
     const weather = await getWeatherForRendering();
-    const png = renderToPng(events, now, config?.layout || "portrait", legend, weather);
+    const png = renderToPng(events, now, config?.layout || "landscape", legend, weather);
     res.setHeader("Content-Type", "image/png");
     res.send(png);
   } catch (e) {
@@ -1436,7 +1455,7 @@ app.get("/debug/weather", async (req, res) => {
 // Debug endpoint to see raw events
 app.get("/debug/events", async (req, res) => {
   try {
-    const events = await fetchAllEvents();
+    const { events, calendarIds } = await fetchAllEvents();
     const dateFilter = req.query.date as string;
     let filtered = events;
     if (dateFilter) {
