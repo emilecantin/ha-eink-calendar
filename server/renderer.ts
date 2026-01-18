@@ -396,7 +396,8 @@ function drawWeekSection(
     const dayEventsUnsorted = events
       .filter((e) => {
         const startsOnDay = isSameDay(e.start, day);
-        const spansDay = e.start < day && e.end > day;
+        const dayStart = startOfDay(day);
+        const spansDay = e.start < dayStart && e.end >= dayStart;
         return startsOnDay || spansDay;
       })
       .sort((a, b) => {
@@ -423,21 +424,15 @@ function drawWeekSection(
         // Determine time/indicator string
         const isMultiDay = !isSameDay(event.start, event.end);
         const startsToday = isSameDay(event.start, day);
-        // For all-day events, end date is exclusive (iCal convention)
-        // So the last day of the event is end - 1 day
-        // For all-day events with exclusive end dates (end != start), subtract a day
-        // If start == end (single-day all-day), don't subtract
-        const lastDay = event.allDay && !isSameDay(event.start, event.end)
-          ? addDays(event.end, -1)
-          : event.end;
-        const endsToday = isSameDay(lastDay, day);
+        // End date is already inclusive (converted from exclusive iCal format in index.ts)
+        const endsToday = isSameDay(event.end, day);
 
         let timeStr = "";
         let endTimeStr = "";
 
         if (event.allDay) {
-          // Draw line with triangle caps for all-day events
-          const lineY = eventY + 5;
+          // Draw line with triangle caps for all-day events (centered with 16px icon)
+          const lineY = eventY + 8;
           const lineLeft = dayX + 5;
           const lineRight = dayX + dayWidth - 10;
           const triSize = 6;
@@ -1014,7 +1009,8 @@ function drawLandscapeWeekSection(
     const dayEventsUnsorted = events
       .filter((e) => {
         const startsOnDay = isSameDay(e.start, day);
-        const spansDay = e.start < day && e.end > day;
+        const dayStart = startOfDay(day);
+        const spansDay = e.start < dayStart && e.end >= dayStart;
         return startsOnDay || spansDay;
       })
       .sort((a, b) => {
@@ -1039,21 +1035,15 @@ function drawLandscapeWeekSection(
 
         const isMultiDay = !isSameDay(event.start, event.end);
         const startsToday = isSameDay(event.start, day);
-        // For all-day events, end date is exclusive (iCal convention)
-        // So the last day of the event is end - 1 day
-        // For all-day events with exclusive end dates (end != start), subtract a day
-        // If start == end (single-day all-day), don't subtract
-        const lastDay = event.allDay && !isSameDay(event.start, event.end)
-          ? addDays(event.end, -1)
-          : event.end;
-        const endsToday = isSameDay(lastDay, day);
+        // End date is already inclusive (converted from exclusive iCal format in index.ts)
+        const endsToday = isSameDay(event.end, day);
 
         let timeStr = "";
         let endTimeStr = "";
 
         if (event.allDay) {
-          // All-day indicator line
-          const lineY = eventY + 5;
+          // All-day indicator line (centered with 14px icon)
+          const lineY = eventY + 7;
           const lineLeft = dayX + 5;
           const lineRight = dayX + dayWidth - 10;
           const triSize = 5;
@@ -1108,7 +1098,9 @@ function drawLandscapeWeekSection(
             getIconCenterOffset(event.calendarIcon, 14),
             getIconBottomOffset(event.calendarIcon, 14)
           );
-          ctx.fillText(event.calendarIcon, iconX, eventY + iconOffset);
+          // For all-day events, align icon with the line (lineY = eventY + 7)
+          const iconY = event.allDay ? eventY + iconOffset + 2 : eventY + iconOffset;
+          ctx.fillText(event.calendarIcon, iconX, iconY);
         }
 
         // Title (2 lines max)
