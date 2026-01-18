@@ -14,6 +14,16 @@ app.use(express.urlencoded({ extended: true }));
 const port = process.env.PORT || 4000;
 const CONFIG_FILE = process.env.CONFIG_PATH || "./.epcal-config.json";
 
+// Add-on mode: HA connection comes from environment (set by Supervisor)
+const ADDON_MODE = !!(process.env.HA_URL && process.env.HA_TOKEN);
+const INGRESS_PATH = process.env.INGRESS_PATH || "";
+
+// Log mode on startup
+if (ADDON_MODE) {
+  console.log("Running in Home Assistant Add-on mode");
+  console.log(`Ingress path: ${INGRESS_PATH || "(none)"}`);
+}
+
 // Get server timezone offset string (e.g., "-05:00")
 function getServerTimezoneOffset(): string {
   const offset = new Date().getTimezoneOffset();
@@ -53,15 +63,37 @@ const CALENDAR_ICONS = ["●", "■", "▲", "◆", "★", "♦", "♣", "♠", 
 function loadConfig(): Config | null {
   try {
     const data = fs.readFileSync(CONFIG_FILE, "utf8");
-    return JSON.parse(data);
+    const fileConfig = JSON.parse(data);
+
+    // In add-on mode, override HA connection with environment variables
+    if (ADDON_MODE) {
+      return {
+        ...fileConfig,
+        haUrl: process.env.HA_URL!,
+        haToken: process.env.HA_TOKEN!,
+      };
+    }
+
+    return fileConfig;
   } catch (e) {
+    // In add-on mode, return minimal config with HA connection from env
+    if (ADDON_MODE) {
+      return {
+        haUrl: process.env.HA_URL!,
+        haToken: process.env.HA_TOKEN!,
+      };
+    }
     return null;
   }
 }
 
 // Save config to file
-function saveConfig(config: Config): void {
-  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2), "utf8");
+function saveConfig(cfg: Config): void {
+  // In add-on mode, don't save HA credentials (they come from Supervisor)
+  const toSave = ADDON_MODE
+    ? { ...cfg, haUrl: undefined, haToken: undefined }
+    : cfg;
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(toSave, null, 2), "utf8");
 }
 
 // Get current config
@@ -607,6 +639,31 @@ app.get("/", async (req, res) => {
   </div>
   ` : ''}
 
+  ${ADDON_MODE ? `
+  <!-- Add-on mode: HA connection is automatic -->
+  ${weatherEntities.length > 0 ? `
+  <details class="collapsible">
+    <summary>Météo</summary>
+    <div class="collapsible-content">
+      <form action="/weather" method="POST">
+        <div class="form-group">
+          <label for="weather-entity">Entité météo pour les prévisions:</label>
+          <select name="weatherEntity" id="weather-entity" class="form-control">
+            <option value="">-- Aucune --</option>
+            ${weatherEntities.map(w => `
+              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? 'selected' : ''}>
+                ${w.name} (${w.entity_id})
+              </option>
+            `).join('')}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      </form>
+    </div>
+  </details>
+  ` : ''}
+  ` : `
+  <!-- Standalone mode: manual HA configuration -->
   <details class="collapsible" ${isConnected ? '' : 'open'}>
     <summary>${i18n.configTitle}</summary>
     <div class="collapsible-content">
@@ -641,6 +698,7 @@ app.get("/", async (req, res) => {
       </form>
     </div>
   </details>
+  `}
 
   ${isConnected ? `
   <div class="section">
@@ -852,6 +910,22 @@ app.post("/layout", async (req, res) => {
   cacheTimestamp = null;
 
   res.redirect("/?message=" + encodeURIComponent("Disposition enregistrée"));
+});
+
+// Handle weather entity selection (for add-on mode)
+app.post("/weather", async (req, res) => {
+  if (!config) {
+    return res.redirect("/?error=" + encodeURIComponent("Configuration requise"));
+  }
+
+  config.weatherEntity = req.body.weatherEntity || undefined;
+  saveConfig(config);
+
+  // Clear render cache
+  cachedRender = null;
+  cacheTimestamp = null;
+
+  res.redirect("/?message=" + encodeURIComponent("Météo enregistrée"));
 });
 
 // Handle calendar selection form submission

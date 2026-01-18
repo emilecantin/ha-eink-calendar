@@ -1,0 +1,7 @@
+# Home Assistant Add-on Repository
+# Add this repository to Home Assistant: Settings > Add-ons > Add-on Store > ... > Repositories
+# URL: https://gitlab.com/emilecantin/epcal
+
+name: EPCAL Add-ons
+url: https://gitlab.com/emilecantin/epcal
+maintainer: Emile Cantin
