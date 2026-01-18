@@ -140,3 +140,28 @@ Hold BOOT button (GPIO0) for 2 seconds during startup to enter config mode. Disp
 4. **15-30 minute refresh**: Configurable, balances freshness vs battery
 5. **Pre-rendered setup screen**: Avoids runtime QR generation on ESP32
 6. **Inter font**: Optimized for e-paper readability
+
+## Development Guidelines
+
+### Be Extra Careful With Deployment Scripts
+
+**Shell scripts, Dockerfiles, and CI configurations are slow to test.** Before editing:
+
+1. **Consider ALL execution environments**:
+   - `addon/run.sh` runs in BOTH HA Supervisor (with bashio, SUPERVISOR_TOKEN) AND standalone Docker (without them)
+   - `addon/Dockerfile` builds for CI (repo root context) but add-on expects addon/ context
+   - Always handle missing environment variables gracefully (`${VAR:-default}`)
+
+2. **Trace through the script mentally** for each environment before committing
+
+3. **Shell script gotchas**:
+   - `set -e` makes unset variables fatal - use `${VAR:-}` syntax
+   - Check if files/commands exist before using them (`[ -f file ] && ...`)
+   - Test both success and failure paths
+
+4. **Docker/CI gotchas**:
+   - Build context matters - COPY paths are relative to context, not Dockerfile location
+   - Multi-arch builds need QEMU and buildx configuration
+   - GitLab CI Docker-in-Docker has TLS quirks
+
+5. **When in doubt, ask** rather than making assumptions about runtime environment
