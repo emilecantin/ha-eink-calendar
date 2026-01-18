@@ -1,6 +1,9 @@
 services:
   epcal:
+    # Option 1: Build locally from source
     build: ./server
+    # Option 2: Use pre-built image from GitLab Container Registry
+    # image: registry.gitlab.com/emilecantin/epcal/addon:latest
     ports:
       - "4000:4000"
     volumes:
