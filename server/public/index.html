@@ -1,0 +1,87 @@
+<!DOCTYPE <!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title></title>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/locale/fr/cdn.min.js"></script>
+  </head>
+  <body>
+    <canvas
+      id="canvas"
+      width="984"
+      height="1304"
+      style="border: 15px solid black"
+    >
+    </canvas>
+  </body>
+  <script type="text/javascript">
+    const SCREEN_W = 984;
+    const SCREEN_H = 1304;
+    dateFns.setDefaultOptions({ locale: dateFns.locale.fr });
+    function capitalize(text) {
+      return text.replace(/^(\w)/, (s) => s.toLocaleUpperCase());
+    }
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    ctx.textBaseline = "top";
+    const today = new Date();
+    const todayText = capitalize(dateFns.format(today, "PPPP"));
+
+    const startOfWeek = dateFns.startOfWeek(today);
+
+    ctx.font = "32px sans-serif";
+    ctx.fillText(todayText, 10, 10);
+
+    function drawDay(ctx, date, x, y, size) {
+      const day = dateFns.format(date, "d");
+      if (dateFns.isSameDay(date, today)) {
+        ctx.strokeStyle = "red";
+        ctx.fillStyle = "red";
+        ctx.font = "14px sans-serif";
+        const dim = ctx.measureText(day);
+        ctx.fillRect(x, y, dim.width + 4, 14 + 4);
+        ctx.fillStyle = "white";
+        ctx.fillText(day, x + 2, y + 4);
+        ctx.fillStyle = "black";
+      } else {
+        ctx.strokeStyle = "black";
+        ctx.font = "12px sans-serif";
+        ctx.fillText(day, x + 2, y + 4);
+      }
+      ctx.strokeRect(x, y, size, size);
+    }
+
+    function drawMonth(ctx, x, y, weeks) {
+      const width = SCREEN_W - 2 * x;
+      const dayWidth = width / 7;
+      ctx.strokeRect(x, y, width, dayWidth * weeks + 20);
+
+      // Draw header
+      for (let i = 0; i < 7; i++) {
+        ctx.strokeRect(x + i * dayWidth, y, dayWidth, 20);
+        ctx.font = "12px sans-serif";
+        ctx.fillText(
+          capitalize(dateFns.format(dateFns.addDays(startOfWeek, i), "eeee")),
+          x + dayWidth * i + 4,
+          y + 4,
+        );
+      }
+      // Draw weeks
+      for (let w = 0; w < weeks; w++) {
+        for (let d = 0; d < 7; d++) {
+          drawDay(
+            ctx,
+            dateFns.addDays(startOfWeek, w * 7 + d),
+            x + d * dayWidth,
+            20 + y + w * dayWidth,
+            dayWidth,
+          );
+        }
+      }
+    }
+    drawMonth(ctx, 2, 50, 5);
+  </script>
+</html>

@@ -1,0 +1,30 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Server
+server/.epcal-config.json
+
+# Arduino/PlatformIO
+Arduino/epcal/.pio/
+Arduino/epcal/.vscode/
+
+# Build artifacts
+*.o
+*.a
+*.bin
+
+# Preview images (can be regenerated)
+Arduino/epcal/setup_screen_preview.png
+
+# Environment files
+.env
+.env.local
