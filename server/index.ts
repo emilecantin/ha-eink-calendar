@@ -1356,10 +1356,11 @@ async function fetchWeatherForecast(entityId: string, type: "daily" | "hourly" =
     });
 
     if (response.ok) {
-      const result = await response.json() as { service_response?: Record<string, { forecast?: unknown[] }> };
+      const result = await response.json() as { service_response?: Record<string, { forecast?: WeatherForecast[] }> };
       // Response format: { "service_response": { "weather.entity_id": { "forecast": [...] } } }
-      if (result?.service_response?.[entityId]?.forecast) {
-        return result.service_response[entityId].forecast;
+      const forecast = result?.service_response?.[entityId]?.forecast;
+      if (forecast) {
+        return forecast;
       }
     }
   } catch (e) {
