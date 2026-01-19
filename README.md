@@ -26,7 +26,7 @@ Waveshare 12.48" E-Paper Display
 
 ## Hardware Requirements
 
-- ESP32 development board (tested with Waveshare E-Paper Driver Board)
+- [Waveshare E-Paper ESP32 Driver Board](https://www.waveshare.com/wiki/E-Paper_ESP32_Driver_Board) (or compatible ESP32)
 - [Waveshare 12.48" e-Paper Module (B)](https://www.waveshare.com/12.48inch-e-paper-module-b.htm) - tri-color version
 - USB cable for programming
 - Optional: Battery for portable operation

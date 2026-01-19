@@ -165,6 +165,27 @@ interface DisplayProfile {
 
 ---
 
+## Hardware / Battery Testing (Pending)
+
+### Deep Sleep Current Measurement
+- [ ] Measure actual deep sleep current with 18650 battery
+- [ ] Identify any power-hungry components (USB-UART chip, regulator)
+- [ ] Calculate expected battery life based on measurements
+
+### Battery Setup
+- **Board**: Waveshare E-Paper ESP32 Driver Board (3.6-5.5V input)
+- **Cells**: 18650 Li-ion (waiting for battery holders to arrive)
+- **Considerations**:
+  - May need over-discharge protection (don't go below 2.5-3.0V)
+  - Consider adding battery voltage monitoring via ADC
+
+### Power Optimization (if needed)
+- [ ] Tune refresh interval based on battery life requirements
+- [ ] Investigate disabling USB-UART chip during sleep
+- [ ] Consider brownout detection settings for low battery
+
+---
+
 ## Other Improvements (Backlog)
 
 ### Documentation
