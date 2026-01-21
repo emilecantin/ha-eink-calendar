@@ -123,7 +123,7 @@ function loadConfig(): Config | null {
     }
 
     return fileConfig;
-  } catch (e) {
+  } catch (_e) {
     // In add-on mode, return minimal config with HA connection from env
     if (ADDON_MODE) {
       return {
@@ -213,7 +213,7 @@ async function haFetch(endpoint: string): Promise<any> {
   if (!response.ok) {
     throw new Error(`HA API error: ${response.status} ${response.statusText}`);
   }
-  return response.json();
+  return await response.json();
 }
 
 // Check if Home Assistant is reachable
@@ -1029,7 +1029,7 @@ app.get("/", async (req, res) => {
             return a.name.localeCompare(b.name);
           });
           return sortedCalendars
-            .map((c, index) => {
+            .map((c, _index) => {
               const isEnabled =
                 config?.enabledCalendars?.includes(c.entity_id) || false;
               const currentIcon =
@@ -2138,7 +2138,9 @@ app.get("/calendar/preview", async (req, res) => {
       const threeDaysLater = new Date(
         today.getTime() + 3 * 24 * 60 * 60 * 1000,
       );
-      const fourDaysLater = new Date(today.getTime() + 4 * 24 * 60 * 60 * 1000);
+      const _fourDaysLater = new Date(
+        today.getTime() + 4 * 24 * 60 * 60 * 1000,
+      );
 
       const dummyEvents: CalendarEvent[] = [];
       const defaultIcon =
@@ -2485,7 +2487,7 @@ app.get("/debug/weather", async (req, res) => {
 // Debug endpoint to see raw events
 app.get("/debug/events", async (req, res) => {
   try {
-    const { events, calendarIds } = await fetchAllEvents();
+    const { events } = await fetchAllEvents();
     const dateFilter = req.query.date as string;
     let filtered = events;
     if (dateFilter) {

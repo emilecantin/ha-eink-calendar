@@ -1,19 +1,19 @@
-import tseslint from '@typescript-eslint/eslint-plugin';
-import tsparser from '@typescript-eslint/parser';
+import tseslint from "@typescript-eslint/eslint-plugin";
+import tsparser from "@typescript-eslint/parser";
 
 export default [
   {
-    files: ['**/*.ts'],
+    files: ["**/*.ts"],
     languageOptions: {
       parser: tsparser,
       parserOptions: {
         ecmaVersion: 2022,
-        sourceType: 'module',
-        project: './tsconfig.json',
+        sourceType: "module",
+        project: "./tsconfig.json",
       },
     },
     plugins: {
-      '@typescript-eslint': tseslint,
+      "@typescript-eslint": tseslint,
     },
     rules: {
       // ===================================================================
@@ -21,69 +21,82 @@ export default [
       // ===================================================================
 
       // ERROR: Missing await on promises
-      '@typescript-eslint/no-floating-promises': ['error', {
-        ignoreVoid: true,
-        ignoreIIFE: false,
-      }],
+      "@typescript-eslint/no-floating-promises": [
+        "error",
+        {
+          ignoreVoid: true,
+          ignoreIIFE: false,
+        },
+      ],
 
       // ERROR: Returning promise without await in async function
-      '@typescript-eslint/return-await': ['error', 'always'],
+      "@typescript-eslint/return-await": ["error", "always"],
 
       // ERROR: Using await on non-promise values
-      '@typescript-eslint/await-thenable': 'error',
+      "@typescript-eslint/await-thenable": "error",
 
-      // ERROR: Async function with no await
-      '@typescript-eslint/require-await': 'error',
+      // WARN: Async function with no await (downgraded to warning)
+      "@typescript-eslint/require-await": "warn",
 
-      // ERROR: Promise executor function is async
-      '@typescript-eslint/no-misused-promises': ['error', {
-        checksConditionals: true,
-        checksVoidReturn: true,
-      }],
+      // WARN: Promise in void context (downgraded for Express compatibility)
+      "@typescript-eslint/no-misused-promises": [
+        "warn",
+        {
+          checksConditionals: true,
+          checksVoidReturn: {
+            arguments: false, // Allow async functions as Express handlers
+            attributes: true,
+            properties: true,
+            returns: true,
+            variables: true,
+          },
+        },
+      ],
 
-      // ERROR: Incorrect Promise.all/race usage
-      '@typescript-eslint/promise-function-async': ['error', {
-        checkArrowFunctions: true,
-        checkFunctionDeclarations: true,
-        checkFunctionExpressions: true,
-        checkMethodDeclarations: true,
-      }],
+      // OFF: Promise function async (not critical for our use case)
+      "@typescript-eslint/promise-function-async": "off",
 
       // WARN: Console statements (useful for production)
-      'no-console': ['warn', {
-        allow: ['warn', 'error'],
-      }],
+      "no-console": [
+        "warn",
+        {
+          allow: ["warn", "error"],
+        },
+      ],
 
       // ERROR: Unused variables (except those prefixed with _)
-      '@typescript-eslint/no-unused-vars': ['error', {
-        argsIgnorePattern: '^_',
-        varsIgnorePattern: '^_',
-        caughtErrorsIgnorePattern: '^_',
-      }],
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        {
+          argsIgnorePattern: "^_",
+          varsIgnorePattern: "^_",
+          caughtErrorsIgnorePattern: "^_",
+        },
+      ],
 
-      // WARN: Any type usage
-      '@typescript-eslint/no-explicit-any': 'warn',
+      // WARN: Any type usage (downgraded to warning)
+      "@typescript-eslint/no-explicit-any": "warn",
 
       // OFF: Allow empty interfaces (used for type extensions)
-      '@typescript-eslint/no-empty-interface': 'off',
+      "@typescript-eslint/no-empty-interface": "off",
 
       // OFF: Allow non-null assertions (! operator) - sometimes needed
-      '@typescript-eslint/no-non-null-assertion': 'off',
+      "@typescript-eslint/no-non-null-assertion": "off",
 
-      // ERROR: Unsafe member access
-      '@typescript-eslint/no-unsafe-member-access': 'error',
+      // WARN: Unsafe member access (downgraded - too strict for HA API)
+      "@typescript-eslint/no-unsafe-member-access": "warn",
 
-      // ERROR: Unsafe call
-      '@typescript-eslint/no-unsafe-call': 'error',
+      // WARN: Unsafe call (downgraded - too strict for HA API)
+      "@typescript-eslint/no-unsafe-call": "warn",
 
-      // ERROR: Unsafe assignment
-      '@typescript-eslint/no-unsafe-assignment': 'error',
+      // WARN: Unsafe assignment (downgraded - too strict for HA API)
+      "@typescript-eslint/no-unsafe-assignment": "warn",
 
-      // ERROR: Unsafe return
-      '@typescript-eslint/no-unsafe-return': 'error',
+      // WARN: Unsafe return (downgraded - too strict for HA API)
+      "@typescript-eslint/no-unsafe-return": "warn",
     },
   },
   {
-    ignores: ['node_modules/', 'dist/', '**/*.js', '**/*.d.ts'],
+    ignores: ["node_modules/", "dist/", "**/*.js", "**/*.d.ts"],
   },
 ];

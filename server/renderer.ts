@@ -3,7 +3,6 @@ import {
   Canvas,
   CanvasRenderingContext2D,
   registerFont,
-  Image,
   loadImage,
 } from "canvas";
 import {
