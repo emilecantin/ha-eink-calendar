@@ -7,6 +7,13 @@ import {
   loadImage,
 } from "canvas";
 import {
+  drawEventTriangle,
+  formatMultiDayTime,
+  drawOverflowIndicator,
+  sortEventsByPriority,
+  type EventWithIndicators,
+} from "./event-renderer";
+import {
   format,
   startOfWeek,
   endOfWeek,
@@ -774,13 +781,8 @@ function drawWeekSection(
     }
 
     // Day events - include events that start on this day OR span across this day
-    const dayEventsWithIndicators = getEventsForDay(events, day).sort(
-      (a, b) => {
-        // All-day events first, then by start time
-        if (a.event.allDay && !b.event.allDay) return -1;
-        if (!a.event.allDay && b.event.allDay) return 1;
-        return a.event.start.getTime() - b.event.start.getTime();
-      },
+    const dayEventsWithIndicators = sortEventsByPriority(
+      getEventsForDay(events, day),
     );
 
     const eventAreaTop = gridY + dayHeaderHeight + 8;
@@ -885,9 +887,14 @@ function drawWeekSection(
     if (hasMoreEvents && isRed) {
       const overflowY = eventAreaTop + maxEventsToShow * eventHeight;
       const moreCount = dayEventsWithIndicators.length - maxEventsToShow;
-      ctx.fillStyle = COLOR_RED;
-      ctx.font = "bold 14px Inter";
-      ctx.fillText(`+${moreCount} autres`, dayX + 5, overflowY);
+      drawOverflowIndicator({
+        ctx,
+        x: dayX + 5,
+        y: overflowY,
+        count: moreCount,
+        fontSize: 14,
+        language: "fr",
+      });
     }
   }
 }
@@ -1248,9 +1255,14 @@ async function drawLandscapeTodaySection(
   if (totalTodayEvents > maxEvents && isRed) {
     const moreCount = totalTodayEvents - maxEvents;
     const y = eventStartY + maxEvents * eventBlockHeight - 6;
-    ctx.fillStyle = COLOR_RED;
-    ctx.font = "bold 18px Inter";
-    ctx.fillText(`+ ${moreCount} autres événements`, headerX, y);
+    drawOverflowIndicator({
+      ctx,
+      x: headerX,
+      y,
+      count: moreCount,
+      fontSize: 18,
+      language: "fr",
+    });
   }
 
   // Collection icons above the legend (lower right corner of Today section)
@@ -1499,12 +1511,8 @@ async function drawLandscapeWeekSection(
     }
 
     // Day events
-    const dayEventsWithIndicators = getEventsForDay(events, day).sort(
-      (a, b) => {
-        if (a.event.allDay && !b.event.allDay) return -1;
-        if (!a.event.allDay && b.event.allDay) return 1;
-        return a.event.start.getTime() - b.event.start.getTime();
-      },
+    const dayEventsWithIndicators = sortEventsByPriority(
+      getEventsForDay(events, day),
     );
 
     const eventAreaTop = gridTop + dayHeaderHeight + 8 + indicatorOffset;
@@ -1604,9 +1612,14 @@ async function drawLandscapeWeekSection(
     if (hasMoreEvents && isRed) {
       const overflowY = eventAreaTop + maxEventsToShow * eventHeight;
       const moreCount = dayEventsWithIndicators.length - maxEventsToShow;
-      ctx.fillStyle = COLOR_RED;
-      ctx.font = "bold 14px Inter";
-      ctx.fillText(`+${moreCount} autres`, dayX + 5, overflowY);
+      drawOverflowIndicator({
+        ctx,
+        x: dayX + 5,
+        y: overflowY,
+        count: moreCount,
+        fontSize: 14,
+        language: "fr",
+      });
     }
 
     // Collection calendar icons (lower right corner of day cell)
