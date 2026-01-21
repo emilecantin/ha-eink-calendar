@@ -1714,6 +1714,65 @@ function drawLandscapeUpcomingSection(
 const DISPLAY_W = 1304;
 const DISPLAY_H = 984;
 
+// ============================================================================
+// Context-based wrapper functions (Phase 4 refactoring)
+// These provide a cleaner API by consolidating 9-10 parameters into context objects
+// ============================================================================
+
+/**
+ * Context-based wrapper for drawLandscapeTodaySection
+ * Consolidates 10 parameters into a single RenderingContext object
+ */
+async function drawLandscapeTodaySectionV2(
+  context: import("./rendering-types").RenderingContext,
+): Promise<void> {
+  const { ctx, events, date, isRed, options } = context;
+  return drawLandscapeTodaySection(
+    ctx,
+    events,
+    date,
+    isRed,
+    options.legend || [],
+    options.weather || [],
+    options.indicators || [],
+    options.collectionCalendars || [],
+    options.collectionTypes || [],
+    options.allEvents || events,
+  );
+}
+
+/**
+ * Context-based wrapper for drawLandscapeWeekSection
+ * Consolidates 9 parameters into a single RenderingContext object
+ */
+async function drawLandscapeWeekSectionV2(
+  context: import("./rendering-types").RenderingContext,
+): Promise<void> {
+  const { ctx, events, date, isRed, options } = context;
+  return drawLandscapeWeekSection(
+    ctx,
+    events,
+    date,
+    isRed,
+    options.weather || [],
+    options.indicators || [],
+    options.collectionCalendars || [],
+    options.collectionTypes || [],
+    options.allEvents || events,
+  );
+}
+
+/**
+ * Context-based wrapper for drawLandscapeUpcomingSection
+ * Consolidates parameters into a single RenderingContext object
+ */
+function drawLandscapeUpcomingSectionV2(
+  context: import("./rendering-types").RenderingContext,
+): void {
+  const { ctx, events, date, isRed } = context;
+  return drawLandscapeUpcomingSection(ctx, events, date, isRed);
+}
+
 export async function renderCalendar(
   events: CalendarEvent[],
   now: Date,
@@ -1824,28 +1883,27 @@ async function renderCalendarLandscape(
 
   // Draw all sections (black layer)
   ctx.textBaseline = "top";
-  await drawLandscapeTodaySection(
+
+  // Create rendering context for black layer
+  const blackContext: import("./rendering-types").RenderingContext = {
     ctx,
     events,
-    now,
-    false,
-    legend,
-    weather,
-    indicators,
-    collectionCalendars,
-    collectionTypes,
-  );
-  await drawLandscapeWeekSection(
-    ctx,
-    events,
-    now,
-    false,
-    weather,
-    indicators,
-    collectionCalendars,
-    collectionTypes,
-  );
-  drawLandscapeUpcomingSection(ctx, events, now, false);
+    date: now,
+    isRed: false,
+    layout: "landscape",
+    options: {
+      legend,
+      weather,
+      indicators,
+      collectionCalendars,
+      collectionTypes,
+      allEvents: events,
+    },
+  };
+
+  await drawLandscapeTodaySectionV2(blackContext);
+  await drawLandscapeWeekSectionV2(blackContext);
+  drawLandscapeUpcomingSectionV2(blackContext);
 
   // Get black layer image data
   const blackImageData = ctx.getImageData(0, 0, LANDSCAPE_W, LANDSCAPE_H);
@@ -1854,28 +1912,26 @@ async function renderCalendarLandscape(
   ctx.fillStyle = COLOR_WHITE;
   ctx.fillRect(0, 0, LANDSCAPE_W, LANDSCAPE_H);
 
-  await drawLandscapeTodaySection(
+  // Create rendering context for red layer
+  const redContext: import("./rendering-types").RenderingContext = {
     ctx,
     events,
-    now,
-    true,
-    legend,
-    weather,
-    indicators,
-    collectionCalendars,
-    collectionTypes,
-  );
-  await drawLandscapeWeekSection(
-    ctx,
-    events,
-    now,
-    true,
-    weather,
-    indicators,
-    collectionCalendars,
-    collectionTypes,
-  );
-  drawLandscapeUpcomingSection(ctx, events, now, true);
+    date: now,
+    isRed: true,
+    layout: "landscape",
+    options: {
+      legend,
+      weather,
+      indicators,
+      collectionCalendars,
+      collectionTypes,
+      allEvents: events,
+    },
+  };
+
+  await drawLandscapeTodaySectionV2(redContext);
+  await drawLandscapeWeekSectionV2(redContext);
+  drawLandscapeUpcomingSectionV2(redContext);
 
   const redImageData = ctx.getImageData(0, 0, LANDSCAPE_W, LANDSCAPE_H);
 

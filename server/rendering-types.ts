@@ -6,49 +6,22 @@
  */
 
 import { CanvasRenderingContext2D } from "canvas";
+import type {
+  CalendarEvent,
+  DayForecast,
+  LegendItem,
+  IndicatorData,
+  LayoutMode,
+} from "./renderer";
 
-/**
- * Calendar event data structure
- */
-export interface CalendarEvent {
-  id: string;
-  summary: string;
-  start: Date;
-  end: Date;
-  allDay: boolean;
-  calendar: string;
-}
-
-/**
- * Weather forecast data for a single day
- */
-export interface DayForecast {
-  date: Date;
-  high: number;
-  low: number;
-  condition: string;
-  iconUrl?: string;
-}
-
-/**
- * Legend item for calendar color key
- */
-export interface LegendItem {
-  calendar: string;
-  color: string;
-  label: string;
-}
-
-/**
- * Binary sensor indicator data
- */
-export interface IndicatorData {
-  entityId: string;
-  state: 'on' | 'off';
-  label: string;
-  icon: string;
-  shouldDisplay: boolean;
-}
+// Re-export types from renderer for convenience
+export type {
+  CalendarEvent,
+  DayForecast,
+  LegendItem,
+  IndicatorData,
+  LayoutMode,
+};
 
 /**
  * Collection calendar type configuration
@@ -57,11 +30,6 @@ export interface CollectionType {
   name: string;
   icon: string;
 }
-
-/**
- * Layout mode for the calendar display
- */
-export type LayoutMode = "portrait" | "landscape";
 
 /**
  * Optional rendering options that can be passed to rendering functions
