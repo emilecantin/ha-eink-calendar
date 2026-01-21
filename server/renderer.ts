@@ -1,14 +1,38 @@
-import { createCanvas, Canvas, CanvasRenderingContext2D, registerFont } from "canvas";
-import { format, startOfWeek, endOfWeek, addDays, startOfDay, isSameDay, isWithinInterval, differenceInDays, isWeekend } from "date-fns";
+import {
+  createCanvas,
+  Canvas,
+  CanvasRenderingContext2D,
+  registerFont,
+} from "canvas";
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  addDays,
+  startOfDay,
+  isSameDay,
+  isWithinInterval,
+  differenceInDays,
+  isWeekend,
+} from "date-fns";
 import { fr } from "date-fns/locale";
 import crypto from "crypto";
 import path from "path";
 
 // Register Inter font family
 const fontsDir = path.join(__dirname, "fonts");
-registerFont(path.join(fontsDir, "Inter-Regular.ttf"), { family: "Inter", weight: "normal" });
-registerFont(path.join(fontsDir, "Inter-Medium.ttf"), { family: "Inter", weight: "500" });
-registerFont(path.join(fontsDir, "Inter-Bold.ttf"), { family: "Inter", weight: "bold" });
+registerFont(path.join(fontsDir, "Inter-Regular.ttf"), {
+  family: "Inter",
+  weight: "normal",
+});
+registerFont(path.join(fontsDir, "Inter-Medium.ttf"), {
+  family: "Inter",
+  weight: "500",
+});
+registerFont(path.join(fontsDir, "Inter-Bold.ttf"), {
+  family: "Inter",
+  weight: "bold",
+});
 
 // Display dimensions
 // Portrait mode (rotated 90° for display): 984 wide × 1304 tall
@@ -25,7 +49,7 @@ const WEEK_SECTION_HEIGHT = 600;
 const UPCOMING_SECTION_HEIGHT = 254;
 
 // Landscape layout dimensions
-const LANDSCAPE_LEFT_WIDTH = 400;  // Today section
+const LANDSCAPE_LEFT_WIDTH = 400; // Today section
 const LANDSCAPE_RIGHT_WIDTH = 904; // 6 days + upcoming (1304 - 400)
 const LANDSCAPE_WEEK_HEIGHT = 700; // 6 days section
 const LANDSCAPE_UPCOMING_HEIGHT = 284; // Upcoming section (984 - 700)
@@ -114,7 +138,7 @@ export interface CalendarEvent {
 // Weather forecast for a single day
 export interface DayForecast {
   date: Date;
-  condition: string;  // sunny, cloudy, snowy, rainy, etc.
+  condition: string; // sunny, cloudy, snowy, rainy, etc.
   tempHigh: number | null;
   tempLow: number | null;
 }
@@ -122,22 +146,22 @@ export interface DayForecast {
 // Weather icon mapping (condition -> Unicode symbol)
 // These render with Symbola or DejaVu Sans fonts
 const WEATHER_ICONS: { [condition: string]: string } = {
-  "sunny": "☀",        // U+2600
-  "clear": "☀",
-  "clear-night": "☽",  // U+263D
-  "partlycloudy": "⛅", // U+26C5
-  "cloudy": "☁",       // U+2601
-  "fog": "▒",          // U+2592 (medium shade)
-  "hail": "☁",
-  "lightning": "⚡",    // U+26A1
+  sunny: "☀", // U+2600
+  clear: "☀",
+  "clear-night": "☽", // U+263D
+  partlycloudy: "⛅", // U+26C5
+  cloudy: "☁", // U+2601
+  fog: "▒", // U+2592 (medium shade)
+  hail: "☁",
+  lightning: "⚡", // U+26A1
   "lightning-rainy": "⛈", // U+26C8
-  "pouring": "☔",      // U+2614
-  "rainy": "☂",        // U+2602
-  "snowy": "❄",        // U+2744
+  pouring: "☔", // U+2614
+  rainy: "☂", // U+2602
+  snowy: "❄", // U+2744
   "snowy-rainy": "❄",
-  "windy": "≋",        // U+224B
+  windy: "≋", // U+224B
   "windy-variant": "≋",
-  "exceptional": "⚠",  // U+26A0
+  exceptional: "⚠", // U+26A0
 };
 
 // Get weather icon for a condition
@@ -146,8 +170,11 @@ function getWeatherIcon(condition: string): string {
 }
 
 // Get forecast for a specific date from array
-function getForecastForDate(forecasts: DayForecast[], date: Date): DayForecast | undefined {
-  return forecasts.find(f => isSameDay(f.date, date));
+function getForecastForDate(
+  forecasts: DayForecast[],
+  date: Date,
+): DayForecast | undefined {
+  return forecasts.find((f) => isSameDay(f.date, date));
 }
 
 export interface RenderedCalendar {
@@ -165,21 +192,33 @@ function formatTime(date: Date): string {
   return format(date, "HH:mm");
 }
 
-function truncateText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string {
+function truncateText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+): string {
   const metrics = ctx.measureText(text);
   if (metrics.width <= maxWidth) return text;
 
   let truncated = text;
-  while (truncated.length > 0 && ctx.measureText(truncated + "...").width > maxWidth) {
+  while (
+    truncated.length > 0 &&
+    ctx.measureText(truncated + "...").width > maxWidth
+  ) {
     truncated = truncated.slice(0, -1);
   }
   return truncated + "...";
 }
 
-function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, maxLines: number): string[] {
-  const words = text.split(' ');
+function wrapText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  maxWidth: number,
+  maxLines: number,
+): string[] {
+  const words = text.split(" ");
   const lines: string[] = [];
-  let currentLine = '';
+  let currentLine = "";
   let wordIndex = 0;
 
   for (; wordIndex < words.length; wordIndex++) {
@@ -211,7 +250,10 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number,
     if (hasMoreText) {
       // There's more text that didn't fit - force ellipsis
       let lastLine = lines[lastIndex];
-      while (lastLine.length > 0 && ctx.measureText(lastLine + "...").width > maxWidth) {
+      while (
+        lastLine.length > 0 &&
+        ctx.measureText(lastLine + "...").width > maxWidth
+      ) {
         lastLine = lastLine.slice(0, -1);
       }
       lines[lastIndex] = lastLine + "...";
@@ -228,7 +270,7 @@ function drawTodaySection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
-  isRed: boolean
+  isRed: boolean,
 ): void {
   const sectionY = 0;
   const sectionHeight = TODAY_SECTION_HEIGHT;
@@ -237,7 +279,12 @@ function drawTodaySection(
   if (!isRed) {
     ctx.strokeStyle = COLOR_BLACK;
     ctx.lineWidth = 3;
-    ctx.strokeRect(MARGIN, sectionY + MARGIN, PORTRAIT_W - 2 * MARGIN, sectionHeight - MARGIN);
+    ctx.strokeRect(
+      MARGIN,
+      sectionY + MARGIN,
+      PORTRAIT_W - 2 * MARGIN,
+      sectionHeight - MARGIN,
+    );
   }
 
   // Header area
@@ -265,7 +312,10 @@ function drawTodaySection(
   const maxEvents = 7;
 
   const todayEvents = events
-    .filter((e) => isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)))
+    .filter(
+      (e) =>
+        isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)),
+    )
     .sort((a, b) => a.start.getTime() - b.start.getTime())
     .slice(0, maxEvents);
 
@@ -298,12 +348,18 @@ function drawTodaySection(
   });
 
   // Show overflow indicator if needed
-  const totalTodayEvents = events.filter((e) => isSameDay(e.start, today)).length;
+  const totalTodayEvents = events.filter((e) =>
+    isSameDay(e.start, today),
+  ).length;
   if (totalTodayEvents > maxEvents && !isRed) {
     const y = eventStartY + maxEvents * eventLineHeight;
     ctx.fillStyle = COLOR_BLACK;
     ctx.font = "italic 16px Inter";
-    ctx.fillText(`... et ${totalTodayEvents - maxEvents} de plus`, headerX, y + 16);
+    ctx.fillText(
+      `... et ${totalTodayEvents - maxEvents} de plus`,
+      headerX,
+      y + 16,
+    );
   }
 }
 
@@ -311,7 +367,7 @@ function drawWeekSection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
-  isRed: boolean
+  isRed: boolean,
 ): void {
   const sectionY = TODAY_SECTION_HEIGHT;
   const sectionHeight = WEEK_SECTION_HEIGHT;
@@ -322,7 +378,12 @@ function drawWeekSection(
   if (!isRed) {
     ctx.strokeStyle = COLOR_BLACK;
     ctx.lineWidth = 3;
-    ctx.strokeRect(MARGIN, sectionY + MARGIN, PORTRAIT_W - 2 * MARGIN, sectionHeight - 2 * MARGIN);
+    ctx.strokeRect(
+      MARGIN,
+      sectionY + MARGIN,
+      PORTRAIT_W - 2 * MARGIN,
+      sectionHeight - 2 * MARGIN,
+    );
   }
 
   // Section header
@@ -523,7 +584,7 @@ function drawUpcomingSection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
-  isRed: boolean
+  isRed: boolean,
 ): void {
   const sectionY = TODAY_SECTION_HEIGHT + WEEK_SECTION_HEIGHT;
   const sectionHeight = UPCOMING_SECTION_HEIGHT;
@@ -532,7 +593,12 @@ function drawUpcomingSection(
   if (!isRed) {
     ctx.strokeStyle = COLOR_BLACK;
     ctx.lineWidth = 3;
-    ctx.strokeRect(MARGIN, sectionY, PORTRAIT_W - 2 * MARGIN, sectionHeight - MARGIN);
+    ctx.strokeRect(
+      MARGIN,
+      sectionY,
+      PORTRAIT_W - 2 * MARGIN,
+      sectionHeight - MARGIN,
+    );
   }
 
   // Section header
@@ -616,7 +682,7 @@ function drawLandscapeTodaySection(
   today: Date,
   isRed: boolean,
   legend: LegendItem[] = [],
-  weather: DayForecast[] = []
+  weather: DayForecast[] = [],
 ): void {
   const sectionX = 0;
   const sectionWidth = LANDSCAPE_LEFT_WIDTH;
@@ -626,7 +692,12 @@ function drawLandscapeTodaySection(
   if (!isRed) {
     ctx.strokeStyle = COLOR_BLACK;
     ctx.lineWidth = 2;
-    ctx.strokeRect(MARGIN, MARGIN, sectionWidth - MARGIN, sectionHeight - 2 * MARGIN);
+    ctx.strokeRect(
+      MARGIN,
+      MARGIN,
+      sectionWidth - MARGIN,
+      sectionHeight - 2 * MARGIN,
+    );
   }
 
   // Header - standardized style matching day columns
@@ -638,7 +709,12 @@ function drawLandscapeTodaySection(
   // Weekend header background (red layer)
   if (isWeekendDay && isRed) {
     ctx.fillStyle = COLOR_RED;
-    ctx.fillRect(MARGIN + 1, headerY + 1, sectionWidth - MARGIN - 2, headerHeight - 1);
+    ctx.fillRect(
+      MARGIN + 1,
+      headerY + 1,
+      sectionWidth - MARGIN - 2,
+      headerHeight - 1,
+    );
   }
 
   // Header text - white on red for weekends, black otherwise
@@ -666,7 +742,9 @@ function drawLandscapeTodaySection(
 
       let tempWidth = 0;
       if (hasHigh || hasLow) {
-        const highTemp = hasHigh ? `${Math.round(todayForecast.tempHigh!)}°` : "";
+        const highTemp = hasHigh
+          ? `${Math.round(todayForecast.tempHigh!)}°`
+          : "";
         const lowTemp = hasLow ? `${Math.round(todayForecast.tempLow!)}°` : "";
         const highMetrics = hasHigh ? ctx.measureText(highTemp) : { width: 0 };
         const lowMetrics = hasLow ? ctx.measureText(lowTemp) : { width: 0 };
@@ -674,10 +752,18 @@ function drawLandscapeTodaySection(
 
         // Keep positions stable: high always on top, low always on bottom
         if (hasHigh) {
-          ctx.fillText(highTemp, weatherRightEdge - highMetrics.width, headerY + 12);
+          ctx.fillText(
+            highTemp,
+            weatherRightEdge - highMetrics.width,
+            headerY + 12,
+          );
         }
         if (hasLow) {
-          ctx.fillText(lowTemp, weatherRightEdge - lowMetrics.width, headerY + 38);
+          ctx.fillText(
+            lowTemp,
+            weatherRightEdge - lowMetrics.width,
+            headerY + 38,
+          );
         }
       }
 
@@ -685,9 +771,10 @@ function drawLandscapeTodaySection(
       ctx.font = "44px Symbola, DejaVu Sans";
       const icon = getWeatherIcon(todayForecast.condition);
       const iconMetrics = ctx.measureText(icon);
-      const iconX = tempWidth > 0
-        ? weatherRightEdge - tempWidth - 8 - iconMetrics.width
-        : weatherRightEdge - iconMetrics.width;
+      const iconX =
+        tempWidth > 0
+          ? weatherRightEdge - tempWidth - 8 - iconMetrics.width
+          : weatherRightEdge - iconMetrics.width;
       ctx.fillText(icon, iconX, headerY + 10);
     }
   }
@@ -710,17 +797,21 @@ function drawLandscapeTodaySection(
   const legendItemHeight = 18;
   const legendHeaderHeight = 20;
   const legendRows = legend.length > 0 ? Math.ceil(legend.length / 2) : 0;
-  const legendHeight = legend.length > 0
-    ? legendRows * legendItemHeight + legendHeaderHeight
-    : 0;
+  const legendHeight =
+    legend.length > 0 ? legendRows * legendItemHeight + legendHeaderHeight : 0;
   const bottomPadding = 20; // Space at very bottom to avoid cutoff
   // Note: overflow indicator is now placed in the event area (where next event would go)
   // so we don't need to reserve separate space for it
   const reservedBottom = bottomPadding + legendHeight;
-  const maxEvents = Math.floor((sectionHeight - eventStartY - reservedBottom) / eventBlockHeight);
+  const maxEvents = Math.floor(
+    (sectionHeight - eventStartY - reservedBottom) / eventBlockHeight,
+  );
 
   const todayEvents = events
-    .filter((e) => isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)))
+    .filter(
+      (e) =>
+        isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)),
+    )
     .sort((a, b) => a.start.getTime() - b.start.getTime())
     .slice(0, maxEvents);
 
@@ -730,14 +821,8 @@ function drawLandscapeTodaySection(
     const blockY = eventStartY + index * eventBlockHeight;
     const isMultiDay = !isSameDay(event.start, event.end);
     const startsToday = isSameDay(event.start, today);
-    // For all-day events, end date is exclusive (iCal convention)
-    // So the last day of the event is end - 1 day
-    // For all-day events with exclusive end dates (end != start), subtract a day
-        // If start == end (single-day all-day), don't subtract
-        const lastDay = event.allDay && !isSameDay(event.start, event.end)
-          ? addDays(event.end, -1)
-          : event.end;
-    const endsToday = isSameDay(lastDay, today);
+    // End date is already inclusive (converted from exclusive iCal format in index.ts)
+    const endsToday = isSameDay(event.end, today);
 
     if (!isRed) {
       ctx.fillStyle = COLOR_BLACK;
@@ -806,7 +891,11 @@ function drawLandscapeTodaySection(
 
         const endTimeStr = formatTime(event.end);
         const endTimeWidth = ctx.measureText(endTimeStr).width;
-        ctx.fillText(endTimeStr, headerX + eventWidth - endTimeWidth - 5, blockY);
+        ctx.fillText(
+          endTimeStr,
+          headerX + eventWidth - endTimeWidth - 5,
+          blockY,
+        );
 
         // Icon centered
         if (event.calendarIcon) {
@@ -831,7 +920,9 @@ function drawLandscapeTodaySection(
   const legendTop = sectionHeight - bottomPadding - legendHeight;
 
   // Overflow indicator - positioned where the next event would go, minus a few pixels
-  const totalTodayEvents = events.filter((e) => isSameDay(e.start, today)).length;
+  const totalTodayEvents = events.filter((e) =>
+    isSameDay(e.start, today),
+  ).length;
   if (totalTodayEvents > maxEvents && isRed) {
     const moreCount = totalTodayEvents - maxEvents;
     const y = eventStartY + maxEvents * eventBlockHeight - 6;
@@ -874,7 +965,7 @@ function drawLandscapeWeekSection(
   events: CalendarEvent[],
   today: Date,
   isRed: boolean,
-  weather: DayForecast[] = []
+  weather: DayForecast[] = [],
 ): void {
   const sectionX = LANDSCAPE_LEFT_WIDTH;
   const sectionY = 0;
@@ -952,7 +1043,9 @@ function drawLandscapeWeekSection(
 
       // 3-letter day name (left-aligned) - LUN, MAR, MER, JEU, VEN, SAM, DIM
       ctx.font = "bold 18px Inter";
-      const dayName = format(day, "EEE", { locale: fr }).toUpperCase().slice(0, 3);
+      const dayName = format(day, "EEE", { locale: fr })
+        .toUpperCase()
+        .slice(0, 3);
       ctx.fillText(dayName, leftMargin, gridTop + 10);
 
       // Day number below day name (left-aligned)
@@ -969,15 +1062,23 @@ function drawLandscapeWeekSection(
         ctx.font = "bold 16px Inter";
         let tempWidth = 0;
         if (hasHigh || hasLow) {
-          const highTemp = hasHigh ? `${Math.round(dayForecast.tempHigh!)}°` : "";
+          const highTemp = hasHigh
+            ? `${Math.round(dayForecast.tempHigh!)}°`
+            : "";
           const lowTemp = hasLow ? `${Math.round(dayForecast.tempLow!)}°` : "";
-          const highMetrics = hasHigh ? ctx.measureText(highTemp) : { width: 0 };
+          const highMetrics = hasHigh
+            ? ctx.measureText(highTemp)
+            : { width: 0 };
           const lowMetrics = hasLow ? ctx.measureText(lowTemp) : { width: 0 };
           tempWidth = Math.max(highMetrics.width, lowMetrics.width);
 
           // Keep positions stable: high always on top, low always on bottom
           if (hasHigh) {
-            ctx.fillText(highTemp, rightMargin - highMetrics.width, gridTop + 16);
+            ctx.fillText(
+              highTemp,
+              rightMargin - highMetrics.width,
+              gridTop + 16,
+            );
           }
           if (hasLow) {
             ctx.fillText(lowTemp, rightMargin - lowMetrics.width, gridTop + 36);
@@ -988,9 +1089,10 @@ function drawLandscapeWeekSection(
         ctx.font = "32px Symbola, DejaVu Sans";
         const icon = getWeatherIcon(dayForecast.condition);
         const iconMetrics = ctx.measureText(icon);
-        const iconX = tempWidth > 0
-          ? rightMargin - tempWidth - 6 - iconMetrics.width
-          : rightMargin - iconMetrics.width;
+        const iconX =
+          tempWidth > 0
+            ? rightMargin - tempWidth - 6 - iconMetrics.width
+            : rightMargin - iconMetrics.width;
         ctx.fillText(icon, iconX, gridTop + 18);
       }
     };
@@ -1096,10 +1198,12 @@ function drawLandscapeWeekSection(
           const iconX = dayX + (dayWidth - iconWidth) / 2;
           const iconOffset = Math.min(
             getIconCenterOffset(event.calendarIcon, 14),
-            getIconBottomOffset(event.calendarIcon, 14)
+            getIconBottomOffset(event.calendarIcon, 14),
           );
           // For all-day events, align icon with the line (lineY = eventY + 7)
-          const iconY = event.allDay ? eventY + iconOffset + 2 : eventY + iconOffset;
+          const iconY = event.allDay
+            ? eventY + iconOffset + 2
+            : eventY + iconOffset;
           ctx.fillText(event.calendarIcon, iconX, iconY);
         }
 
@@ -1128,7 +1232,7 @@ function drawLandscapeUpcomingSection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
-  isRed: boolean
+  isRed: boolean,
 ): void {
   const sectionX = LANDSCAPE_LEFT_WIDTH;
   const sectionY = LANDSCAPE_WEEK_HEIGHT;
@@ -1222,14 +1326,25 @@ function drawLandscapeUpcomingSection(
 const DISPLAY_W = 1304;
 const DISPLAY_H = 984;
 
-export function renderCalendar(events: CalendarEvent[], now: Date, layout: LayoutMode = "portrait", legend: LegendItem[] = [], weather: DayForecast[] = []): RenderedCalendar {
+export function renderCalendar(
+  events: CalendarEvent[],
+  now: Date,
+  layout: LayoutMode = "portrait",
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): RenderedCalendar {
   if (layout === "landscape") {
     return renderCalendarLandscape(events, now, legend, weather);
   }
   return renderCalendarPortrait(events, now, legend, weather);
 }
 
-function renderCalendarPortrait(events: CalendarEvent[], now: Date, legend: LegendItem[] = [], weather: DayForecast[] = []): RenderedCalendar {
+function renderCalendarPortrait(
+  events: CalendarEvent[],
+  now: Date,
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): RenderedCalendar {
   // Create canvas in portrait mode for rendering
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");
@@ -1280,7 +1395,12 @@ function renderCalendarPortrait(events: CalendarEvent[], now: Date, legend: Lege
   };
 }
 
-function renderCalendarLandscape(events: CalendarEvent[], now: Date, legend: LegendItem[] = [], weather: DayForecast[] = []): RenderedCalendar {
+function renderCalendarLandscape(
+  events: CalendarEvent[],
+  now: Date,
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): RenderedCalendar {
   // Create canvas directly in landscape mode (no rotation needed)
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
@@ -1329,14 +1449,18 @@ function renderCalendarLandscape(events: CalendarEvent[], now: Date, legend: Leg
 // Rotate image data 90 degrees clockwise
 // Input: PORTRAIT_W × PORTRAIT_H (984 × 1304)
 // Output: PORTRAIT_H × PORTRAIT_W (1304 × 984)
-function rotateImageData90CW(imageData: { width: number; height: number; data: Uint8ClampedArray }): {
+function rotateImageData90CW(imageData: {
+  width: number;
+  height: number;
+  data: Uint8ClampedArray;
+}): {
   width: number;
   height: number;
   data: Uint8ClampedArray;
 } {
   const { width, height, data } = imageData;
-  const newWidth = height;  // 1304
-  const newHeight = width;  // 984
+  const newWidth = height; // 1304
+  const newHeight = width; // 984
   const newData = new Uint8ClampedArray(newWidth * newHeight * 4);
 
   for (let sy = 0; sy < height; sy++) {
@@ -1358,12 +1482,15 @@ function rotateImageData90CW(imageData: { width: number; height: number; data: U
   return { width: newWidth, height: newHeight, data: newData };
 }
 
-function imageDataTo1Bit(imageData: { width: number; height: number; data: Uint8ClampedArray }, isRed: boolean): Buffer {
+function imageDataTo1Bit(
+  imageData: { width: number; height: number; data: Uint8ClampedArray },
+  isRed: boolean,
+): Buffer {
   const { width, height, data } = imageData;
   const bytesPerRow = Math.ceil(width / 8);
   // Waveshare e-paper: 0 = colored, 1 = white/transparent
   // Start with all 1s (white), then clear bits for colored pixels
-  const buffer = Buffer.alloc(bytesPerRow * height, 0xFF);
+  const buffer = Buffer.alloc(bytesPerRow * height, 0xff);
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
@@ -1386,7 +1513,7 @@ function imageDataTo1Bit(imageData: { width: number; height: number; data: Uint8
       if (isColored) {
         const byteIndex = y * bytesPerRow + Math.floor(x / 8);
         const bitIndex = 7 - (x % 8);
-        buffer[byteIndex] &= ~(1 << bitIndex);  // Clear bit to 0 for colored pixel
+        buffer[byteIndex] &= ~(1 << bitIndex); // Clear bit to 0 for colored pixel
       }
     }
   }
@@ -1398,9 +1525,9 @@ export function extractChunk(layer: Buffer, chunkIndex: 1 | 2): Buffer {
   // Display is in landscape mode: 1304 wide x 984 tall
   // ESP32 expects two 492-row chunks
   // Chunk 1: rows 0-491, Chunk 2: rows 492-983
-  const bytesPerRow = Math.ceil(DISPLAY_W / 8);  // 163 bytes
-  const halfHeight = Math.ceil(DISPLAY_H / 2);   // 492 rows
-  const chunkSize = bytesPerRow * halfHeight;    // 80196 bytes
+  const bytesPerRow = Math.ceil(DISPLAY_W / 8); // 163 bytes
+  const halfHeight = Math.ceil(DISPLAY_H / 2); // 492 rows
+  const chunkSize = bytesPerRow * halfHeight; // 80196 bytes
 
   if (chunkIndex === 1) {
     return layer.subarray(0, chunkSize);
@@ -1410,14 +1537,25 @@ export function extractChunk(layer: Buffer, chunkIndex: 1 | 2): Buffer {
 }
 
 // For debugging: render to PNG
-export function renderToPng(events: CalendarEvent[], now: Date, layout: LayoutMode = "portrait", legend: LegendItem[] = [], weather: DayForecast[] = []): Buffer {
+export function renderToPng(
+  events: CalendarEvent[],
+  now: Date,
+  layout: LayoutMode = "portrait",
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): Buffer {
   if (layout === "landscape") {
     return renderToPngLandscape(events, now, legend, weather);
   }
   return renderToPngPortrait(events, now, legend, weather);
 }
 
-function renderToPngPortrait(events: CalendarEvent[], now: Date, legend: LegendItem[] = [], weather: DayForecast[] = []): Buffer {
+function renderToPngPortrait(
+  events: CalendarEvent[],
+  now: Date,
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): Buffer {
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");
 
@@ -1441,7 +1579,12 @@ function renderToPngPortrait(events: CalendarEvent[], now: Date, legend: LegendI
   return canvas.toBuffer("image/png");
 }
 
-function renderToPngLandscape(events: CalendarEvent[], now: Date, legend: LegendItem[] = [], weather: DayForecast[] = []): Buffer {
+function renderToPngLandscape(
+  events: CalendarEvent[],
+  now: Date,
+  legend: LegendItem[] = [],
+  weather: DayForecast[] = [],
+): Buffer {
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
 
