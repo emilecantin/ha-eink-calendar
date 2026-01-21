@@ -1,0 +1,6 @@
+{
+  "watch": ["*.ts"],
+  "ignore": [".epcal-config.json", "*.json"],
+  "ext": "ts",
+  "exec": "ts-node index.ts"
+}

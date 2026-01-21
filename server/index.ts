@@ -2,7 +2,16 @@ require("dotenv").config();
 import express from "express";
 import fs from "fs";
 import { addWeeks, startOfWeek } from "date-fns";
-import { renderCalendar, renderToPng, extractChunk, CalendarEvent, RenderedCalendar, LegendItem, DayForecast } from "./renderer";
+import {
+  renderCalendar,
+  renderToPng,
+  extractChunk,
+  CalendarEvent,
+  RenderedCalendar,
+  LegendItem,
+  DayForecast,
+  IndicatorData,
+} from "./renderer";
 import { startOfDay, parseISO } from "date-fns";
 import mdns from "multicast-dns";
 import os from "os";
@@ -28,7 +37,9 @@ if (ADDON_MODE) {
 function getServerTimezoneOffset(): string {
   const offset = new Date().getTimezoneOffset();
   const sign = offset <= 0 ? "+" : "-";
-  const hours = Math.floor(Math.abs(offset) / 60).toString().padStart(2, "0");
+  const hours = Math.floor(Math.abs(offset) / 60)
+    .toString()
+    .padStart(2, "0");
   const minutes = (Math.abs(offset) % 60).toString().padStart(2, "0");
   return `${sign}${hours}:${minutes}`;
 }
@@ -45,19 +56,56 @@ interface Config {
   enabledCalendars?: string[]; // List of enabled calendar entity_ids
   calendarIcons?: { [entityId: string]: string }; // Calendar icon/letter assignments
   calendarNames?: { [entityId: string]: string }; // Calendar display names for legend
+  collectionCalendars?: string[]; // List of calendar entity_ids that are collection calendars (garbage, recycling, etc.)
+  collectionTypes?: Array<{
+    // Collection types (trash, recycling, compost, etc.) with icons
+    name: string; // Name/keyword to match in event title (e.g., "Garbage", "Recycling")
+    icon: string; // Icon to display (emoji)
+  }>;
   layout?: "portrait" | "landscape"; // Display layout mode
   weatherEntity?: string; // Weather entity for forecast display
   showLegend?: boolean; // Show calendar legend on display
+  displayIndicators?: Array<{
+    entityId: string;
+    label: string;
+    icon: string;
+    showWhen: "on" | "off" | "always";
+  }>;
 }
 
 // Layout options for UI
 const LAYOUT_OPTIONS = [
-  { value: "landscape", label: "Paysage (recommandé)", description: "Aujourd'hui à gauche, 6 jours + à venir à droite" },
-  { value: "portrait", label: "Portrait", description: "Aujourd'hui en haut, semaine au milieu, à venir en bas" },
+  {
+    value: "landscape",
+    label: "Paysage (recommandé)",
+    description: "Aujourd'hui à gauche, 6 jours + à venir à droite",
+  },
+  {
+    value: "portrait",
+    label: "Portrait",
+    description: "Aujourd'hui en haut, semaine au milieu, à venir en bas",
+  },
 ];
 
 // Available icons for calendars (single characters)
-const CALENDAR_ICONS = ["●", "■", "▲", "◆", "★", "♦", "♣", "♠", "○", "□", "△", "◇", "☆", "⬟", "⬡", "⬢"];
+const CALENDAR_ICONS = [
+  "●",
+  "■",
+  "▲",
+  "◆",
+  "★",
+  "♦",
+  "♣",
+  "♠",
+  "○",
+  "□",
+  "△",
+  "◇",
+  "☆",
+  "⬟",
+  "⬡",
+  "⬢",
+];
 
 // Load config from file
 function loadConfig(): Config | null {
@@ -110,7 +158,12 @@ function buildLegend(calendarIds: string[]): LegendItem[] {
 
   return calendarIds.map((entityId, index) => ({
     icon: icons[entityId] || CALENDAR_ICONS[index % CALENDAR_ICONS.length],
-    name: names[entityId] || entityId.replace("calendar.", "").replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase()),
+    name:
+      names[entityId] ||
+      entityId
+        .replace("calendar.", "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (l) => l.toUpperCase()),
   }));
 }
 
@@ -176,7 +229,9 @@ async function checkHAConnection(): Promise<boolean> {
 }
 
 // Fetch available calendars from Home Assistant
-async function fetchCalendars(): Promise<{ entity_id: string; name: string }[]> {
+async function fetchCalendars(): Promise<
+  { entity_id: string; name: string }[]
+> {
   try {
     const calendars = await haFetch("/api/calendars");
     return calendars;
@@ -187,7 +242,9 @@ async function fetchCalendars(): Promise<{ entity_id: string; name: string }[]> 
 }
 
 // Fetch available weather entities from Home Assistant
-async function fetchWeatherEntities(): Promise<{ entity_id: string; name: string }[]> {
+async function fetchWeatherEntities(): Promise<
+  { entity_id: string; name: string }[]
+> {
   try {
     const states = await haFetch("/api/states");
     return states
@@ -198,6 +255,146 @@ async function fetchWeatherEntities(): Promise<{ entity_id: string; name: string
       }));
   } catch (e) {
     console.error("Error fetching weather entities:", e);
+    return [];
+  }
+}
+
+// Auto-detect collection types by analyzing event titles from collection calendars
+async function fetchCollectionTypesFromHA(): Promise<
+  Array<{ name: string; icon: string }>
+> {
+  if (!config?.collectionCalendars || config.collectionCalendars.length === 0) {
+    return [];
+  }
+
+  try {
+    // Default icon mapping for common collection type keywords
+    const typeKeywords: Array<{
+      keywords: string[];
+      name: string;
+      icon: string;
+    }> = [
+      {
+        keywords: ["garbage", "trash", "waste", "déchet", "ordure", "poubelle"],
+        name: "Garbage",
+        icon: "🗑️",
+      },
+      {
+        keywords: ["recycling", "recycle", "recyclage", "récupération"],
+        name: "Recycling",
+        icon: "♻️",
+      },
+      {
+        keywords: ["compost", "organic", "organique", "food waste"],
+        name: "Compost",
+        icon: "🍂",
+      },
+      {
+        keywords: ["yard", "green", "vert", "garden"],
+        name: "Yard Waste",
+        icon: "🌿",
+      },
+      {
+        keywords: ["glass", "verre"],
+        name: "Glass",
+        icon: "🫙",
+      },
+      {
+        keywords: ["paper", "papier"],
+        name: "Paper",
+        icon: "📄",
+      },
+      {
+        keywords: ["cardboard", "carton"],
+        name: "Cardboard",
+        icon: "📦",
+      },
+    ];
+
+    // Fetch recent events from collection calendars to analyze titles
+    const start = new Date();
+    const end = new Date();
+    end.setMonth(end.getMonth() + 2); // Look ahead 2 months
+
+    const detectedTypes = new Set<string>();
+    const typeMap = new Map<string, { name: string; icon: string }>();
+
+    for (const calendarId of config.collectionCalendars) {
+      try {
+        const startStr = start.toISOString();
+        const endStr = end.toISOString();
+        const events: HAEvent[] = await haFetch(
+          `/api/calendars/${calendarId}?start=${startStr}&end=${endStr}`,
+        );
+
+        // Analyze event titles to detect collection types
+        events.forEach((event) => {
+          if (!event.summary) return;
+
+          const titleLower = event.summary.toLowerCase();
+
+          // Check each type's keywords against the title
+          for (const typeInfo of typeKeywords) {
+            if (typeInfo.keywords.some((kw) => titleLower.includes(kw))) {
+              if (!detectedTypes.has(typeInfo.name)) {
+                detectedTypes.add(typeInfo.name);
+                typeMap.set(typeInfo.name, {
+                  name: typeInfo.name,
+                  icon: typeInfo.icon,
+                });
+              }
+            }
+          }
+        });
+      } catch (e) {
+        console.error(
+          `Error fetching events from ${calendarId} for type detection:`,
+          e,
+        );
+      }
+    }
+
+    // Convert to array
+    return Array.from(typeMap.values());
+  } catch (e) {
+    console.error("Error detecting collection types:", e);
+    return [];
+  }
+}
+
+// Fetch binary sensor indicators for display
+async function fetchIndicators(): Promise<IndicatorData[]> {
+  if (!config?.displayIndicators || config.displayIndicators.length === 0) {
+    return [];
+  }
+
+  try {
+    const states = await haFetch("/api/states");
+
+    return config.displayIndicators
+      .map((indicator) => {
+        const entityState = states.find(
+          (s: any) => s.entity_id === indicator.entityId,
+        );
+        if (!entityState) return null;
+
+        const state = entityState.state as "on" | "off";
+        const shouldDisplay =
+          indicator.showWhen === "always" ||
+          (indicator.showWhen === "on" && state === "on") ||
+          (indicator.showWhen === "off" && state === "off");
+
+        return {
+          entityId: indicator.entityId,
+          state,
+          label: indicator.label,
+          icon: indicator.icon,
+          shouldDisplay,
+        };
+      })
+      .filter((ind): ind is IndicatorData => ind !== null && ind.shouldDisplay);
+  } catch (e) {
+    console.error("Error fetching indicators:", e);
     return [];
   }
 }
@@ -222,7 +419,10 @@ let detectedEventTimezone: string | null = null;
 
 // Fetch events from enabled calendars only
 // Returns events and the list of calendar IDs that were fetched
-async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds: string[] }> {
+async function fetchAllEvents(): Promise<{
+  events: CalendarEvent[];
+  calendarIds: string[];
+}> {
   if (!config) return { events: [], calendarIds: [] };
 
   // Require explicit calendar selection - no calendars = no events
@@ -239,8 +439,13 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
 
     const allEvents: CalendarEvent[] = [];
 
-    // Filter to enabled calendars only
-    const calendarsToFetch = calendars.filter(c => enabledCalendars.includes(c.entity_id));
+    // Filter to enabled calendars, plus any collection calendars (even if not enabled for display)
+    const collectionCalendars = config.collectionCalendars || [];
+    const calendarsToFetch = calendars.filter(
+      (c) =>
+        enabledCalendars.includes(c.entity_id) ||
+        collectionCalendars.includes(c.entity_id),
+    );
 
     // Ensure all calendars have icons assigned
     let configChanged = false;
@@ -249,7 +454,8 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
 
     for (const cal of calendarsToFetch) {
       if (!calendarIcons[cal.entity_id]) {
-        calendarIcons[cal.entity_id] = CALENDAR_ICONS[nextIconIndex % CALENDAR_ICONS.length];
+        calendarIcons[cal.entity_id] =
+          CALENDAR_ICONS[nextIconIndex % CALENDAR_ICONS.length];
         nextIconIndex++;
         configChanged = true;
       }
@@ -265,7 +471,7 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
         const startStr = start.toISOString();
         const endStr = end.toISOString();
         const events: HAEvent[] = await haFetch(
-          `/api/calendars/${cal.entity_id}?start=${startStr}&end=${endStr}`
+          `/api/calendars/${cal.entity_id}?start=${startStr}&end=${endStr}`,
         );
 
         events.forEach((item, index) => {
@@ -274,7 +480,9 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
 
             // Detect timezone from timed events
             if (!isAllDay && item.start.dateTime && !detectedEventTimezone) {
-              detectedEventTimezone = extractTimezoneOffset(item.start.dateTime);
+              detectedEventTimezone = extractTimezoneOffset(
+                item.start.dateTime,
+              );
             }
 
             let startDate: Date;
@@ -300,6 +508,7 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
               end: endDate,
               allDay: isAllDay,
               calendarIcon: calendarIcons[cal.entity_id],
+              calendarId: cal.entity_id,
             });
           }
         });
@@ -308,7 +517,10 @@ async function fetchAllEvents(): Promise<{ events: CalendarEvent[], calendarIds:
       }
     }
 
-    return { events: allEvents, calendarIds: calendarsToFetch.map(c => c.entity_id) };
+    return {
+      events: allEvents,
+      calendarIds: calendarsToFetch.map((c) => c.entity_id),
+    };
   } catch (e) {
     console.error("Error fetching events:", e);
     return { events: [], calendarIds: [] };
@@ -320,6 +532,17 @@ app.get("/", async (req, res) => {
   const isConnected = isConfigured ? await checkHAConnection() : false;
   const calendars = isConnected ? await fetchCalendars() : [];
   const weatherEntities = isConnected ? await fetchWeatherEntities() : [];
+
+  // Fetch binary sensors for indicators configuration
+  const binarySensors = isConnected
+    ? (await haFetch("/api/states"))
+        .filter((s: any) => s.entity_id.startsWith("binary_sensor."))
+        .map((s: any) => ({
+          entity_id: s.entity_id,
+          name: s.attributes.friendly_name || s.entity_id,
+        }))
+    : [];
+
   const message = req.query.message as string | undefined;
   const error = req.query.error as string | undefined;
 
@@ -618,30 +841,43 @@ app.get("/", async (req, res) => {
   <h1>${i18n.title}</h1>
   <p class="subtitle">${i18n.subtitle}</p>
 
-  ${message ? `<div class="message success">${message}</div>` : ''}
-  ${error ? `<div class="message error">${error}</div>` : ''}
+  ${message ? `<div class="message success">${message}</div>` : ""}
+  ${error ? `<div class="message error">${error}</div>` : ""}
 
-  <div class="status ${isConnected ? 'connected' : isConfigured ? 'disconnected' : 'not-configured'}">
+  <div class="status ${isConnected ? "connected" : isConfigured ? "disconnected" : "not-configured"}">
     <span class="status-dot"></span>
     ${isConnected ? i18n.statusConnected : isConfigured ? i18n.statusNotConnected : i18n.statusNotConfigured}
-    ${isConnected ? `<span class="timezone-info">Heures affichées en ${serverTzName}</span>` : ''}
+    ${isConnected ? `<span class="timezone-info">Heures affichées en ${serverTzName}</span>` : ""}
   </div>
 
-  ${tzMismatch ? `
+  ${
+    tzMismatch
+      ? `
   <div class="message warning">
     ⚠️ Les événements du calendrier sont en fuseau horaire ${eventTz}, mais le serveur est en ${serverTz} (${serverTzName}). Les heures affichées pourraient être incorrectes.
   </div>
-  ` : ''}
+  `
+      : ""
+  }
 
-  ${isConnected && (!config?.enabledCalendars || config.enabledCalendars.length === 0) ? `
+  ${
+    isConnected &&
+    (!config?.enabledCalendars || config.enabledCalendars.length === 0)
+      ? `
   <div class="message warning">
     ⚠️ Aucun calendrier n'est activé. Sélectionnez au moins un calendrier ci-dessous pour afficher des événements.
   </div>
-  ` : ''}
+  `
+      : ""
+  }
 
-  ${ADDON_MODE ? `
+  ${
+    ADDON_MODE
+      ? `
   <!-- Add-on mode: HA connection is automatic -->
-  ${weatherEntities.length > 0 ? `
+  ${
+    weatherEntities.length > 0
+      ? `
   <details class="collapsible">
     <summary>Météo</summary>
     <div class="collapsible-content">
@@ -650,21 +886,28 @@ app.get("/", async (req, res) => {
           <label for="weather-entity">Entité météo pour les prévisions:</label>
           <select name="weatherEntity" id="weather-entity" class="form-control">
             <option value="">-- Aucune --</option>
-            ${weatherEntities.map(w => `
-              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? 'selected' : ''}>
+            ${weatherEntities
+              .map(
+                (w) => `
+              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? "selected" : ""}>
                 ${w.name} (${w.entity_id})
               </option>
-            `).join('')}
+            `,
+              )
+              .join("")}
           </select>
         </div>
         <button type="submit" class="btn btn-primary">Enregistrer</button>
       </form>
     </div>
   </details>
-  ` : ''}
-  ` : `
+  `
+      : ""
+  }
+  `
+      : `
   <!-- Standalone mode: manual HA configuration -->
-  <details class="collapsible" ${isConnected ? '' : 'open'}>
+  <details class="collapsible" ${isConnected ? "" : "open"}>
     <summary>${i18n.configTitle}</summary>
     <div class="collapsible-content">
       <form action="/config" method="POST">
@@ -672,35 +915,46 @@ app.get("/", async (req, res) => {
           <label for="haUrl">${i18n.configUrl}</label>
           <input type="url" id="haUrl" name="haUrl"
                  placeholder="${i18n.configUrlPlaceholder}"
-                 value="${config?.haUrl || ''}" required>
+                 value="${config?.haUrl || ""}" required>
         </div>
         <div class="form-group">
           <label for="haToken">${i18n.configToken}</label>
           <input type="password" id="haToken" name="haToken"
                  placeholder="${i18n.configTokenPlaceholder}"
-                 value="${config?.haToken || ''}" required>
+                 value="${config?.haToken || ""}" required>
           <small>Créer dans Home Assistant: Profil → Tokens d'accès longue durée</small>
         </div>
-        ${weatherEntities.length > 0 ? `
+        ${
+          weatherEntities.length > 0
+            ? `
         <div class="form-group">
           <label for="weather-entity">Entité météo pour les prévisions:</label>
           <select name="weatherEntity" id="weather-entity" class="form-control">
             <option value="">-- Aucune --</option>
-            ${weatherEntities.map(w => `
-              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? 'selected' : ''}>
+            ${weatherEntities
+              .map(
+                (w) => `
+              <option value="${w.entity_id}" ${config?.weatherEntity === w.entity_id ? "selected" : ""}>
                 ${w.name} (${w.entity_id})
               </option>
-            `).join('')}
+            `,
+              )
+              .join("")}
           </select>
         </div>
-        ` : ''}
+        `
+            : ""
+        }
         <button type="submit" class="btn btn-primary">${i18n.configSave}</button>
       </form>
     </div>
   </details>
-  `}
+  `
+  }
 
-  ${isConnected ? `
+  ${
+    isConnected
+      ? `
   <div class="section">
     <div class="preview-header">
       <span class="preview-title">${i18n.previewTitle}</span>
@@ -711,23 +965,29 @@ app.get("/", async (req, res) => {
       <a href="/debug" style="color: #666; font-size: 14px;">Debug previews →</a>
     </div>
   </div>
-  ` : ''}
+  `
+      : ""
+  }
 
-  ${isConnected ? `
+  ${
+    isConnected
+      ? `
   <div class="section">
     <h2>Disposition</h2>
     <form action="/layout" method="POST">
       <div class="layout-options">
-        ${LAYOUT_OPTIONS.map(opt => `
-          <label class="layout-option ${(config?.layout || 'landscape') === opt.value ? 'selected' : ''}">
-            <input type="radio" name="layout" value="${opt.value}" ${(config?.layout || 'landscape') === opt.value ? 'checked' : ''}>
+        ${LAYOUT_OPTIONS.map(
+          (opt) => `
+          <label class="layout-option ${(config?.layout || "landscape") === opt.value ? "selected" : ""}">
+            <input type="radio" name="layout" value="${opt.value}" ${(config?.layout || "landscape") === opt.value ? "checked" : ""}>
             <span class="layout-label">${opt.label}</span>
             <span class="layout-desc">${opt.description}</span>
           </label>
-        `).join('')}
+        `,
+        ).join("")}
       </div>
       <label class="layout-checkbox">
-        <input type="checkbox" name="showLegend" value="true" ${config?.showLegend !== false ? 'checked' : ''}>
+        <input type="checkbox" name="showLegend" value="true" ${config?.showLegend !== false ? "checked" : ""}>
         Afficher la légende des calendriers
       </label>
       <button type="submit" class="btn btn-primary">Enregistrer</button>
@@ -741,10 +1001,14 @@ app.get("/", async (req, res) => {
       });
     </script>
   </div>
-  ` : ''}
+  `
+      : ""
+  }
 
 
-  ${calendars.length > 0 ? `
+  ${
+    calendars.length > 0
+      ? `
   <div class="section">
     <h2>${i18n.calendarsTitle}</h2>
     <form action="/calendars" method="POST" id="calendars-form">
@@ -764,29 +1028,39 @@ app.get("/", async (req, res) => {
             if (bIndex !== -1) return 1;
             return a.name.localeCompare(b.name);
           });
-          return sortedCalendars.map((c, index) => {
-            const isEnabled = config?.enabledCalendars?.includes(c.entity_id) || false;
-            const currentIcon = config?.calendarIcons?.[c.entity_id] || CALENDAR_ICONS[0];
-            const currentName = config?.calendarNames?.[c.entity_id] || "";
-            const placeholder = c.entity_id.replace("calendar.", "").replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
-            return `
+          return sortedCalendars
+            .map((c, index) => {
+              const isEnabled =
+                config?.enabledCalendars?.includes(c.entity_id) || false;
+              const currentIcon =
+                config?.calendarIcons?.[c.entity_id] || CALENDAR_ICONS[0];
+              const currentName = config?.calendarNames?.[c.entity_id] || "";
+              const placeholder = c.entity_id
+                .replace("calendar.", "")
+                .replace(/_/g, " ")
+                .replace(/\b\w/g, (l) => l.toUpperCase());
+              return `
             <li data-entity-id="${c.entity_id}">
               <div class="calendar-order-buttons">
                 <button type="button" onclick="moveCalendar(this, -1)" title="Monter">▲</button>
                 <button type="button" onclick="moveCalendar(this, 1)" title="Descendre">▼</button>
               </div>
-              <input type="checkbox" name="calendars" value="${c.entity_id}" id="cal-${c.entity_id}" ${isEnabled ? 'checked' : ''}>
+              <input type="checkbox" name="calendars" value="${c.entity_id}" id="cal-${c.entity_id}" ${isEnabled ? "checked" : ""}>
               <select name="icon-${c.entity_id}" class="calendar-icon-select" title="Icône">
-                ${CALENDAR_ICONS.map(icon => `<option value="${icon}" ${icon === currentIcon ? 'selected' : ''}>${icon}</option>`).join('')}
+                ${CALENDAR_ICONS.map((icon) => `<option value="${icon}" ${icon === currentIcon ? "selected" : ""}>${icon}</option>`).join("")}
               </select>
               <input type="text" name="name-${c.entity_id}" class="calendar-name-input" placeholder="${placeholder}" value="${currentName}" title="Nom affiché">
               <label for="cal-${c.entity_id}">
                 <span class="calendar-name">${c.name}</span>
                 <span class="calendar-id">${c.entity_id}</span>
               </label>
+              <input type="checkbox" name="collection-${c.entity_id}" id="collection-${c.entity_id}" ${config?.collectionCalendars?.includes(c.entity_id) ? "checked" : ""} title="Calendrier de collecte">
+              <label for="collection-${c.entity_id}" style="font-size: 12px; margin-left: 5px;">📦 Collecte</label>
               <input type="hidden" name="order[]" value="${c.entity_id}">
             </li>
-          `}).join('');
+          `;
+            })
+            .join("");
         })()}
       </ul>
       <button type="submit" class="btn btn-primary">${i18n.calendarsSave}</button>
@@ -820,7 +1094,113 @@ app.get("/", async (req, res) => {
       }
     </script>
   </div>
-  ` : ''}
+  `
+      : ""
+  }
+
+  ${
+    isConnected && (config?.collectionCalendars?.length || 0) > 0
+      ? `
+  <div class="section">
+    <h2>Types de collecte</h2>
+    <p>Configurez les types de collecte (déchets, recyclage, compost, etc.) avec leurs icônes.</p>
+    <form action="/collection-types/detect" method="POST" style="display: inline-block; margin-bottom: 10px;">
+      <button type="submit" class="btn btn-small">🔍 Détecter automatiquement</button>
+    </form>
+    <form action="/collection-types" method="POST" id="collection-types-form">
+      <div id="collection-types-list" style="display: flex; flex-direction: column; gap: 10px;">
+        ${(config?.collectionTypes || [])
+          .map(
+            (type, index) =>
+              `<div class="collection-type-item" style="display: flex; gap: 10px; align-items: center;">
+          <input type="text" name="name-${index}" placeholder="Nom (ex: Garbage, Recycling)" value="${type.name}" required style="flex: 1;">
+          <input type="text" name="icon-${index}" placeholder="Icône (emoji)" value="${type.icon}" maxlength="2" required style="width: 80px;">
+          <button type="button" onclick="this.parentElement.remove()" class="btn btn-small">Supprimer</button>
+        </div>`,
+          )
+          .join("")}
+      </div>
+      <button type="button" onclick="addCollectionTypeRow()" class="btn btn-small" style="margin-top: 10px;">Ajouter un type</button>
+      <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les types de collecte</button>
+    </form>
+    <script>
+      function addCollectionTypeRow() {
+        const list = document.getElementById('collection-types-list');
+        const index = list.children.length;
+        const div = document.createElement('div');
+        div.className = 'collection-type-item';
+        div.style.cssText = 'display: flex; gap: 10px; align-items: center;';
+        div.innerHTML = '<input type="text" name="name-' + index + '" placeholder="Nom (ex: Garbage, Recycling)" required style="flex: 1;">' +
+          '<input type="text" name="icon-' + index + '" placeholder="Icône (emoji)" maxlength="2" required style="width: 80px;">' +
+          '<button type="button" onclick="this.parentElement.remove()" class="btn btn-small">Supprimer</button>';
+        list.appendChild(div);
+      }
+    </script>
+  </div>
+  `
+      : ""
+  }
+
+  ${
+    isConnected
+      ? `
+  <div class="section">
+    <h2>Indicateurs & Rappels</h2>
+    <p>Configurez des indicateurs de capteurs binaires à afficher dans la vue 6 jours.</p>
+    <form action="/indicators" method="POST" id="indicators-form">
+      <div id="indicators-list" style="display: flex; flex-direction: column; gap: 10px;">
+        ${(config?.displayIndicators || [])
+          .map(
+            (ind, index) =>
+              `<div class="indicator-item" style="display: flex; gap: 10px; align-items: center;">
+          <select name="entityId-${index}" required style="flex: 1;">
+            <option value="">Sélectionner un capteur binaire...</option>
+            ${binarySensors
+              .map(
+                (s: any) =>
+                  `<option value="${s.entity_id}"${s.entity_id === ind.entityId ? " selected" : ""}>${s.name}</option>`,
+              )
+              .join("")}
+          </select>
+          <input type="text" name="label-${index}" placeholder="Label" value="${ind.label}" required style="width: 120px;">
+          <input type="text" name="icon-${index}" placeholder="Icône" value="${ind.icon}" maxlength="2" required style="width: 60px;">
+          <select name="showWhen-${index}" required style="width: 100px;">
+            <option value="on"${ind.showWhen === "on" ? " selected" : ""}>Quand ON</option>
+            <option value="off"${ind.showWhen === "off" ? " selected" : ""}>Quand OFF</option>
+            <option value="always"${ind.showWhen === "always" ? " selected" : ""}>Toujours</option>
+          </select>
+          <button type="button" onclick="this.parentElement.remove()" class="btn btn-small">Supprimer</button>
+        </div>`,
+          )
+          .join("")}
+      </div>
+      <button type="button" onclick="addIndicatorRow()" class="btn btn-small" style="margin-top: 10px;">Ajouter un indicateur</button>
+      <button type="submit" class="btn btn-primary" style="margin-top: 10px;">Enregistrer les indicateurs</button>
+    </form>
+    <script>
+      const sensorOptions = ${JSON.stringify(binarySensors.map((s: any) => `<option value="${s.entity_id}">${s.name}</option>`).join(""))};
+
+      function addIndicatorRow() {
+        const list = document.getElementById('indicators-list');
+        const index = list.children.length;
+        const div = document.createElement('div');
+        div.className = 'indicator-item';
+        div.style.cssText = 'display: flex; gap: 10px; align-items: center;';
+
+        const html = '<select name="entityId-' + index + '" required style="flex: 1;"><option value="">Sélectionner un capteur binaire...</option>' + sensorOptions + '</select>' +
+          '<input type="text" name="label-' + index + '" placeholder="Label" required style="width: 120px;">' +
+          '<input type="text" name="icon-' + index + '" placeholder="Icône" maxlength="2" required style="width: 60px;">' +
+          '<select name="showWhen-' + index + '" required style="width: 100px;"><option value="on">Quand ON</option><option value="off">Quand OFF</option><option value="always">Toujours</option></select>' +
+          '<button type="button" onclick="this.parentElement.remove()" class="btn btn-small">Supprimer</button>';
+
+        div.innerHTML = html;
+        list.appendChild(div);
+      }
+    </script>
+  </div>
+  `
+      : ""
+  }
 
   <div class="section">
     <h2>${i18n.endpointsTitle}</h2>
@@ -856,8 +1236,8 @@ app.post("/config", async (req, res) => {
 
   // Test the connection before saving
   const newConfig: Config = {
-    ...config,  // Preserve existing settings (calendars, layout, etc.)
-    haUrl: haUrl.replace(/\/$/, ''),
+    ...config, // Preserve existing settings (calendars, layout, etc.)
+    haUrl: haUrl.replace(/\/$/, ""),
     haToken,
     weatherEntity: weatherEntity || undefined,
   };
@@ -885,14 +1265,19 @@ app.post("/config", async (req, res) => {
     res.redirect("/?message=" + encodeURIComponent(i18n.configSuccess));
   } catch (e) {
     console.error("Config test failed:", e);
-    res.redirect("/?error=" + encodeURIComponent(i18n.configError + ": " + (e as Error).message));
+    res.redirect(
+      "/?error=" +
+        encodeURIComponent(i18n.configError + ": " + (e as Error).message),
+    );
   }
 });
 
 // Handle layout selection form submission
 app.post("/layout", async (req, res) => {
   if (!config) {
-    return res.redirect("/?error=" + encodeURIComponent("Configuration requise"));
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
   }
 
   const layout = req.body.layout as "portrait" | "landscape";
@@ -915,7 +1300,9 @@ app.post("/layout", async (req, res) => {
 // Handle weather entity selection (for add-on mode)
 app.post("/weather", async (req, res) => {
   if (!config) {
-    return res.redirect("/?error=" + encodeURIComponent("Configuration requise"));
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
   }
 
   config.weatherEntity = req.body.weatherEntity || undefined;
@@ -931,7 +1318,9 @@ app.post("/weather", async (req, res) => {
 // Handle calendar selection form submission
 app.post("/calendars", async (req, res) => {
   if (!config) {
-    return res.redirect("/?error=" + encodeURIComponent("Configuration requise"));
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
   }
 
   // Get calendar order from hidden inputs (Express parses order[] as req.body.order)
@@ -952,11 +1341,17 @@ app.post("/calendars", async (req, res) => {
   }
 
   // Build selected calendars in the order from the form
-  const selectedCalendars = calendarOrder.filter(id => selectedCalendarsSet.has(id));
+  const selectedCalendars = calendarOrder.filter((id) =>
+    selectedCalendarsSet.has(id),
+  );
 
-  // Get icon and name selections from form
-  const calendarIcons: { [entityId: string]: string } = config.calendarIcons || {};
-  const calendarNames: { [entityId: string]: string } = config.calendarNames || {};
+  // Get icon, name, and collection calendar selections from form
+  const calendarIcons: { [entityId: string]: string } =
+    config.calendarIcons || {};
+  const calendarNames: { [entityId: string]: string } =
+    config.calendarNames || {};
+  const collectionCalendars: string[] = [];
+
   for (const key of Object.keys(req.body)) {
     if (key.startsWith("icon-")) {
       const entityId = key.replace("icon-", "");
@@ -969,13 +1364,19 @@ app.post("/calendars", async (req, res) => {
       } else {
         delete calendarNames[entityId]; // Remove empty names
       }
+    } else if (key.startsWith("collection-")) {
+      const entityId = key.replace("collection-", "");
+      if (req.body[key] === "on") {
+        collectionCalendars.push(entityId);
+      }
     }
   }
 
-  // Update config with selected calendars, icons, and names
+  // Update config with selected calendars, icons, names, and collection calendars
   config.enabledCalendars = selectedCalendars;
   config.calendarIcons = calendarIcons;
   config.calendarNames = calendarNames;
+  config.collectionCalendars = collectionCalendars;
   saveConfig(config);
 
   // Clear render cache to reflect changes
@@ -983,6 +1384,159 @@ app.post("/calendars", async (req, res) => {
   cacheTimestamp = null;
 
   res.redirect("/?message=" + encodeURIComponent(i18n.calendarsSaved));
+});
+
+// Handle indicators configuration form submission
+app.post("/indicators", async (req, res) => {
+  if (!config) {
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
+  }
+
+  const indicators: Config["displayIndicators"] = [];
+  let index = 0;
+
+  while (req.body[`entityId-${index}`]) {
+    indicators.push({
+      entityId: req.body[`entityId-${index}`],
+      label: req.body[`label-${index}`],
+      icon: req.body[`icon-${index}`],
+      showWhen: req.body[`showWhen-${index}`] as "on" | "off" | "always",
+    });
+    index++;
+  }
+
+  config.displayIndicators = indicators;
+  saveConfig(config);
+
+  // Clear render cache
+  cachedRender = null;
+  cacheTimestamp = null;
+
+  res.redirect("/?message=" + encodeURIComponent("Indicateurs enregistrés"));
+});
+
+// Handle collection types configuration form submission
+app.post("/collection-types", async (req, res) => {
+  if (!config) {
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
+  }
+
+  const collectionTypes: Config["collectionTypes"] = [];
+  let index = 0;
+
+  while (req.body[`name-${index}`]) {
+    const name = req.body[`name-${index}`].trim();
+    const icon = req.body[`icon-${index}`].trim();
+    if (name && icon) {
+      collectionTypes.push({
+        name,
+        icon,
+      });
+    }
+    index++;
+  }
+
+  config.collectionTypes = collectionTypes;
+  saveConfig(config);
+
+  // Clear render cache
+  cachedRender = null;
+  cacheTimestamp = null;
+
+  res.redirect(
+    "/?message=" + encodeURIComponent("Types de collecte enregistrés"),
+  );
+});
+
+// Auto-detect collection types from calendar events
+app.post("/collection-types/detect", async (req, res) => {
+  if (!config) {
+    return res.redirect(
+      "/?error=" + encodeURIComponent("Configuration requise"),
+    );
+  }
+
+  // Check if collection calendars are configured
+  if (!config.collectionCalendars || config.collectionCalendars.length === 0) {
+    return res.redirect(
+      "/?error=" +
+        encodeURIComponent(
+          "Aucun calendrier de collecte configuré. Cochez d'abord des calendriers comme calendriers de collecte.",
+        ),
+    );
+  }
+
+  try {
+    console.log("Starting collection type auto-detection...");
+    const detectedTypes = await fetchCollectionTypesFromHA();
+    console.log("Detected types:", detectedTypes);
+
+    // Merge with existing types (don't overwrite user customizations)
+    const existingTypes = config.collectionTypes || [];
+    const existingNames = new Set(
+      existingTypes.map((t) => t.name.toLowerCase()),
+    );
+
+    let addedCount = 0;
+    // Add newly detected types that don't exist yet
+    for (const type of detectedTypes) {
+      if (!existingNames.has(type.name.toLowerCase())) {
+        existingTypes.push(type);
+        addedCount++;
+      }
+    }
+
+    console.log(`Added ${addedCount} new types`);
+    config.collectionTypes = existingTypes;
+    saveConfig(config);
+
+    // Clear render cache
+    cachedRender = null;
+    cacheTimestamp = null;
+
+    const message =
+      addedCount > 0
+        ? addedCount + " type(s) detecte(s) et ajoute(s)"
+        : "Aucun nouveau type detecte";
+    res.redirect("/?message=" + encodeURIComponent(message));
+  } catch (e: any) {
+    console.error("Error auto-detecting collection types:", e);
+    const errorMsg = e.message || "Erreur lors de la detection des types";
+    res.redirect("/?error=" + encodeURIComponent(errorMsg));
+  }
+});
+
+// Debug endpoint to list collection calendar event titles
+app.get("/collection-events", async (_req, res) => {
+  if (!config?.collectionCalendars || config.collectionCalendars.length === 0) {
+    return res.json({ error: "No collection calendars configured" });
+  }
+
+  try {
+    const start = new Date();
+    const end = new Date();
+    end.setMonth(end.getMonth() + 2);
+
+    const eventTitles: { [calendarId: string]: string[] } = {};
+
+    for (const calendarId of config.collectionCalendars) {
+      const startStr = start.toISOString();
+      const endStr = end.toISOString();
+      const events: HAEvent[] = await haFetch(
+        `/api/calendars/${calendarId}?start=${startStr}&end=${endStr}`,
+      );
+      eventTitles[calendarId] = events.map((e) => e.summary).filter(Boolean);
+    }
+
+    res.json(eventTitles);
+  } catch (e: any) {
+    console.error("Error:", e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Debug endpoint to list calendars
@@ -1012,7 +1566,11 @@ app.listen(port, () => {
   if (config) {
     console.log(`Home Assistant configured: ${config.haUrl}`);
   } else {
-    console.log("Home Assistant not configured - visit http://localhost:" + port + " to configure");
+    console.log(
+      "Home Assistant not configured - visit http://localhost:" +
+        port +
+        " to configure",
+    );
   }
 
   // Get local IP addresses for private networks
@@ -1022,9 +1580,11 @@ app.listen(port, () => {
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name] || []) {
       if (iface.family === "IPv4" && !iface.internal) {
-        if (iface.address.startsWith("192.168.") ||
-            iface.address.startsWith("10.") ||
-            iface.address.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)) {
+        if (
+          iface.address.startsWith("192.168.") ||
+          iface.address.startsWith("10.") ||
+          iface.address.match(/^172\.(1[6-9]|2[0-9]|3[0-1])\./)
+        ) {
           privateIPs.push(iface.address);
           console.log(`Found private IP: ${iface.address} on ${name}`);
         }
@@ -1037,7 +1597,7 @@ app.listen(port, () => {
   const mdnsResponder = mdns({
     multicast: true,
     reuseAddr: true,
-    loopback: true
+    loopback: true,
   });
   const serviceName = "EPCAL Calendar Server";
   const serviceType = "_epcal._tcp.local";
@@ -1045,14 +1605,13 @@ app.listen(port, () => {
 
   mdnsResponder.on("query", (query: any) => {
     // Check if the query is for our service
-    const isServiceQuery = query.questions.some((q: any) =>
-      q.name === serviceType || q.name === "_services._dns-sd._udp.local"
+    const isServiceQuery = query.questions.some(
+      (q: any) =>
+        q.name === serviceType || q.name === "_services._dns-sd._udp.local",
     );
-    const isHostQuery = query.questions.some((q: any) =>
-      q.name === hostname
-    );
-    const isInstanceQuery = query.questions.some((q: any) =>
-      q.name === `${serviceName}.${serviceType}`
+    const isHostQuery = query.questions.some((q: any) => q.name === hostname);
+    const isInstanceQuery = query.questions.some(
+      (q: any) => q.name === `${serviceName}.${serviceType}`,
     );
 
     if (isServiceQuery || isHostQuery || isInstanceQuery) {
@@ -1064,7 +1623,7 @@ app.listen(port, () => {
           name: serviceType,
           type: "PTR",
           ttl: 4500,
-          data: `${serviceName}.${serviceType}`
+          data: `${serviceName}.${serviceType}`,
         });
       }
 
@@ -1078,8 +1637,8 @@ app.listen(port, () => {
             port: Number(port),
             weight: 0,
             priority: 0,
-            target: hostname
-          }
+            target: hostname,
+          },
         });
 
         // TXT record with service info
@@ -1087,7 +1646,7 @@ app.listen(port, () => {
           name: `${serviceName}.${serviceType}`,
           type: "TXT",
           ttl: 4500,
-          data: ["version=1", "path=/calendar"]
+          data: ["version=1", "path=/calendar"],
         });
       }
 
@@ -1098,7 +1657,7 @@ app.listen(port, () => {
             name: hostname,
             type: "A",
             ttl: 120,
-            data: ip
+            data: ip,
           });
         }
       }
@@ -1116,7 +1675,7 @@ app.listen(port, () => {
         name: serviceType,
         type: "PTR",
         ttl: 4500,
-        data: `${serviceName}.${serviceType}`
+        data: `${serviceName}.${serviceType}`,
       },
       {
         name: `${serviceName}.${serviceType}`,
@@ -1126,15 +1685,15 @@ app.listen(port, () => {
           port: Number(port),
           weight: 0,
           priority: 0,
-          target: hostname
-        }
+          target: hostname,
+        },
       },
       {
         name: `${serviceName}.${serviceType}`,
         type: "TXT",
         ttl: 4500,
-        data: ["version=1", "path=/calendar"]
-      }
+        data: ["version=1", "path=/calendar"],
+      },
     ];
 
     for (const ip of privateIPs) {
@@ -1142,7 +1701,7 @@ app.listen(port, () => {
         name: hostname,
         type: "A",
         ttl: 120,
-        data: ip
+        data: ip,
       });
     }
 
@@ -1178,14 +1737,45 @@ async function getOrRenderCalendar(): Promise<RenderedCalendar> {
     return cachedRender;
   }
 
-  // Fetch events and weather, then render
+  // Fetch events, weather, and indicators, then render
   console.log("Rendering calendar...");
   const { events, calendarIds } = await fetchAllEvents();
   const legend = buildLegend(calendarIds);
   const weather = await getWeatherForRendering();
-  cachedRender = renderCalendar(events, now, config?.layout || "landscape", legend, weather);
+  const indicators = await fetchIndicators();
+
+  // Debug: Log collection calendar setup
+  console.log("Collection calendars:", config?.collectionCalendars);
+  console.log("Collection types:", config?.collectionTypes);
+  console.log("Total events:", events.length);
+  const collectionEvents = events.filter(
+    (e) =>
+      config?.collectionCalendars?.includes(e.calendarId || "") && e.allDay,
+  );
+  console.log(
+    "Collection events found:",
+    collectionEvents.length,
+    collectionEvents.map((e) => ({
+      title: e.title,
+      start: e.start.toDateString(),
+      calendarId: e.calendarId,
+    })),
+  );
+
+  cachedRender = await renderCalendar(
+    events,
+    now,
+    config?.layout || "landscape",
+    legend,
+    weather,
+    indicators,
+    config?.collectionCalendars || [],
+    config?.collectionTypes || [],
+  );
   cacheTimestamp = now;
-  console.log(`Rendered calendar with ${events.length} events, ${calendarIds.length} calendars, ${weather.length} weather days, ETag: ${cachedRender.etag}`);
+  console.log(
+    `Rendered calendar with ${events.length} events, ${calendarIds.length} calendars, ${weather.length} weather days, ${indicators.length} indicators, ETag: ${cachedRender.etag}`,
+  );
 
   return cachedRender;
 }
@@ -1198,11 +1788,50 @@ async function getOrRenderCalendar(): Promise<RenderedCalendar> {
 //   ?debug=sparse   - Sparse events (some empty days, minimal upcoming)
 //   ?debug=no-upcoming - Events in Today and 6-day, but nothing in À venir
 app.get("/calendar/preview", async (req, res) => {
+  console.log("Preview endpoint called");
   try {
     let { events, calendarIds } = await fetchAllEvents();
     const legend = buildLegend(calendarIds);
     const now = new Date();
     const debugMode = req.query.debug as string;
+
+    console.log("Collection calendars:", config?.collectionCalendars);
+    console.log("Collection types:", config?.collectionTypes);
+    console.log("Total events fetched:", events.length);
+    console.log("Calendar IDs in events:", [
+      ...new Set(events.map((e) => e.calendarId)),
+    ]);
+
+    // Show all events from calendar.ics
+    const icsEvents = events.filter((e) => e.calendarId === "calendar.ics");
+    console.log("Events from calendar.ics:", icsEvents.length);
+    if (icsEvents.length > 0) {
+      console.log(
+        "Sample ICS events:",
+        icsEvents.slice(0, 5).map((e) => ({
+          title: e.title,
+          start: e.start.toDateString(),
+          allDay: e.allDay,
+          calendarId: e.calendarId,
+        })),
+      );
+    }
+
+    const collectionEvents = events.filter(
+      (e) =>
+        config?.collectionCalendars?.includes(e.calendarId || "") && e.allDay,
+    );
+    console.log("Collection events (filtered):", collectionEvents.length);
+    if (collectionEvents.length > 0) {
+      console.log(
+        "Collection event details:",
+        collectionEvents.map((e) => ({
+          title: e.title,
+          start: e.start.toDateString(),
+          calendarId: e.calendarId,
+        })),
+      );
+    }
 
     // Debug mode: completely empty calendar
     if (debugMode === "empty") {
@@ -1214,18 +1843,97 @@ app.get("/calendar/preview", async (req, res) => {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
       const twoDaysLater = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
-      const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
-      const defaultIcon = config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
+      const threeDaysLater = new Date(
+        today.getTime() + 3 * 24 * 60 * 60 * 1000,
+      );
+      const defaultIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
 
       events = [
         // Tomorrow has a few events
-        { id: "no-today-1", title: "Réunion d'équipe", start: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 9, 0), end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 10, 0), allDay: false, calendarIcon: defaultIcon },
-        { id: "no-today-2", title: "Déjeuner", start: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 12, 0), end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 13, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "no-today-1",
+          title: "Réunion d'équipe",
+          start: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            9,
+            0,
+          ),
+          end: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            10,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
+        {
+          id: "no-today-2",
+          title: "Déjeuner",
+          start: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            12,
+            0,
+          ),
+          end: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            13,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
         // Day+2 has one event
-        { id: "no-today-3", title: "Appel client", start: new Date(twoDaysLater.getFullYear(), twoDaysLater.getMonth(), twoDaysLater.getDate(), 14, 0), end: new Date(twoDaysLater.getFullYear(), twoDaysLater.getMonth(), twoDaysLater.getDate(), 15, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "no-today-3",
+          title: "Appel client",
+          start: new Date(
+            twoDaysLater.getFullYear(),
+            twoDaysLater.getMonth(),
+            twoDaysLater.getDate(),
+            14,
+            0,
+          ),
+          end: new Date(
+            twoDaysLater.getFullYear(),
+            twoDaysLater.getMonth(),
+            twoDaysLater.getDate(),
+            15,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
         // Day+3 is empty (to test empty column in 6-day view)
         // Day+4 has an event
-        { id: "no-today-4", title: "Formation", start: new Date(threeDaysLater.getFullYear(), threeDaysLater.getMonth(), threeDaysLater.getDate(), 10, 0), end: new Date(threeDaysLater.getFullYear(), threeDaysLater.getMonth(), threeDaysLater.getDate(), 16, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "no-today-4",
+          title: "Formation",
+          start: new Date(
+            threeDaysLater.getFullYear(),
+            threeDaysLater.getMonth(),
+            threeDaysLater.getDate(),
+            10,
+            0,
+          ),
+          end: new Date(
+            threeDaysLater.getFullYear(),
+            threeDaysLater.getMonth(),
+            threeDaysLater.getDate(),
+            16,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
       ];
     }
 
@@ -1233,15 +1941,74 @@ app.get("/calendar/preview", async (req, res) => {
     if (debugMode === "sparse") {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-      const defaultIcon = config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
-      const secondIcon = config?.calendarIcons?.[config?.enabledCalendars?.[1] || ""] || "◆";
+      const defaultIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
+      const secondIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[1] || ""] || "◆";
 
       events = [
         // Today has 2 events
-        { id: "sparse-1", title: "Standup", start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0), end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 30), allDay: false, calendarIcon: defaultIcon },
-        { id: "sparse-2", title: "Revue de code", start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 0), end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 15, 0), allDay: false, calendarIcon: secondIcon },
+        {
+          id: "sparse-1",
+          title: "Standup",
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            9,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            9,
+            30,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
+        {
+          id: "sparse-2",
+          title: "Revue de code",
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            14,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            15,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: secondIcon,
+        },
         // Tomorrow has 1 event
-        { id: "sparse-3", title: "Dentiste", start: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 11, 0), end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 12, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "sparse-3",
+          title: "Dentiste",
+          start: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            11,
+            0,
+          ),
+          end: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            12,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
         // No upcoming multi-day events (À venir will be empty)
       ];
     }
@@ -1251,16 +2018,112 @@ app.get("/calendar/preview", async (req, res) => {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
       const twoDaysLater = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
-      const defaultIcon = config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
+      const defaultIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
 
       events = [
         // Today has events
-        { id: "no-up-1", title: "Réunion quotidienne", start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 0), end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 9, 30), allDay: false, calendarIcon: defaultIcon },
-        { id: "no-up-2", title: "Déjeuner d'équipe", start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0), end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 13, 0), allDay: false, calendarIcon: defaultIcon },
-        { id: "no-up-3", title: "Session de travail", start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 14, 0), end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), 17, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "no-up-1",
+          title: "Réunion quotidienne",
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            9,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            9,
+            30,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
+        {
+          id: "no-up-2",
+          title: "Déjeuner d'équipe",
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            12,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            13,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
+        {
+          id: "no-up-3",
+          title: "Session de travail",
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            14,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            17,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
         // Tomorrow and day+2 have events too
-        { id: "no-up-4", title: "Appel fournisseur", start: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 10, 0), end: new Date(tomorrow.getFullYear(), tomorrow.getMonth(), tomorrow.getDate(), 11, 0), allDay: false, calendarIcon: defaultIcon },
-        { id: "no-up-5", title: "Présentation", start: new Date(twoDaysLater.getFullYear(), twoDaysLater.getMonth(), twoDaysLater.getDate(), 15, 0), end: new Date(twoDaysLater.getFullYear(), twoDaysLater.getMonth(), twoDaysLater.getDate(), 16, 0), allDay: false, calendarIcon: defaultIcon },
+        {
+          id: "no-up-4",
+          title: "Appel fournisseur",
+          start: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            10,
+            0,
+          ),
+          end: new Date(
+            tomorrow.getFullYear(),
+            tomorrow.getMonth(),
+            tomorrow.getDate(),
+            11,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
+        {
+          id: "no-up-5",
+          title: "Présentation",
+          start: new Date(
+            twoDaysLater.getFullYear(),
+            twoDaysLater.getMonth(),
+            twoDaysLater.getDate(),
+            15,
+            0,
+          ),
+          end: new Date(
+            twoDaysLater.getFullYear(),
+            twoDaysLater.getMonth(),
+            twoDaysLater.getDate(),
+            16,
+            0,
+          ),
+          allDay: false,
+          calendarIcon: defaultIcon,
+        },
         // No multi-day or all-day events beyond 6-day window
       ];
     }
@@ -1269,28 +2132,48 @@ app.get("/calendar/preview", async (req, res) => {
     if (debugMode === "true") {
       const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
       const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
-      const dayAfterTomorrow = new Date(today.getTime() + 2 * 24 * 60 * 60 * 1000);
-      const threeDaysLater = new Date(today.getTime() + 3 * 24 * 60 * 60 * 1000);
+      const dayAfterTomorrow = new Date(
+        today.getTime() + 2 * 24 * 60 * 60 * 1000,
+      );
+      const threeDaysLater = new Date(
+        today.getTime() + 3 * 24 * 60 * 60 * 1000,
+      );
       const fourDaysLater = new Date(today.getTime() + 4 * 24 * 60 * 60 * 1000);
 
       const dummyEvents: CalendarEvent[] = [];
-      const defaultIcon = config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
-      const secondIcon = config?.calendarIcons?.[config?.enabledCalendars?.[1] || ""] || "◆";
+      const defaultIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[0] || ""] || "●";
+      const secondIcon =
+        config?.calendarIcons?.[config?.enabledCalendars?.[1] || ""] || "◆";
 
       // Add 15 events for today to test overflow
       for (let i = 0; i < 15; i++) {
         const hour = 7 + i;
         let title = `Événement test ${i + 1}`;
         if (i === 3) {
-          title = "Réunion stratégique avec l'ensemble des parties prenantes du projet de modernisation";
+          title =
+            "Réunion stratégique avec l'ensemble des parties prenantes du projet de modernisation";
         } else if (i === 7) {
-          title = "Conférence internationale sur les nouvelles technologies émergentes et leur impact";
+          title =
+            "Conférence internationale sur les nouvelles technologies émergentes et leur impact";
         }
         dummyEvents.push({
           id: `dummy-today-${i}`,
           title,
-          start: new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour, 0),
-          end: new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour, 30),
+          start: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            hour,
+            0,
+          ),
+          end: new Date(
+            today.getFullYear(),
+            today.getMonth(),
+            today.getDate(),
+            hour,
+            30,
+          ),
           allDay: false,
           calendarIcon: defaultIcon,
         });
@@ -1321,15 +2204,29 @@ app.get("/calendar/preview", async (req, res) => {
         const hour = 7 + i;
         let title = `Événement jour+3 #${i + 1}`;
         if (i === 2) {
-          title = "Présentation des résultats trimestriels aux investisseurs et actionnaires";
+          title =
+            "Présentation des résultats trimestriels aux investisseurs et actionnaires";
         } else if (i === 5) {
-          title = "Atelier de co-création avec les utilisateurs finaux du produit";
+          title =
+            "Atelier de co-création avec les utilisateurs finaux du produit";
         }
         dummyEvents.push({
           id: `dummy-day3-${i}`,
           title,
-          start: new Date(threeDaysLater.getFullYear(), threeDaysLater.getMonth(), threeDaysLater.getDate(), hour, 0),
-          end: new Date(threeDaysLater.getFullYear(), threeDaysLater.getMonth(), threeDaysLater.getDate(), hour, 30),
+          start: new Date(
+            threeDaysLater.getFullYear(),
+            threeDaysLater.getMonth(),
+            threeDaysLater.getDate(),
+            hour,
+            0,
+          ),
+          end: new Date(
+            threeDaysLater.getFullYear(),
+            threeDaysLater.getMonth(),
+            threeDaysLater.getDate(),
+            hour,
+            30,
+          ),
           allDay: false,
           calendarIcon: defaultIcon,
         });
@@ -1339,7 +2236,25 @@ app.get("/calendar/preview", async (req, res) => {
     }
 
     const weather = await getWeatherForRendering();
-    const png = renderToPng(events, now, config?.layout || "landscape", legend, weather);
+    const indicators = await fetchIndicators();
+
+    // Filter out collection calendar events from display (they'll only show as icons)
+    const collectionCalendars = config?.collectionCalendars || [];
+    const visibleEvents = events.filter(
+      (e) => !collectionCalendars.includes(e.calendarId || ""),
+    );
+
+    const png = await renderToPng(
+      visibleEvents, // Pass filtered events for display
+      now,
+      config?.layout || "landscape",
+      legend,
+      weather,
+      indicators,
+      collectionCalendars,
+      config?.collectionTypes || [],
+      events, // Pass ALL events for collection icon matching
+    );
     res.setHeader("Content-Type", "image/png");
     res.send(png);
   } catch (e) {
@@ -1351,17 +2266,45 @@ app.get("/calendar/preview", async (req, res) => {
 // Debug page showing all preview modes
 app.get("/debug", (req, res) => {
   const debugModes = [
-    { mode: "", label: "Normal", description: "Real calendar data from Home Assistant" },
-    { mode: "true", label: "Overflow", description: "Many events to test overflow indicators and text truncation" },
-    { mode: "empty", label: "Empty", description: "Completely empty calendar (no events at all)" },
-    { mode: "no-today", label: "No Today", description: "No events today, but other days have events" },
-    { mode: "sparse", label: "Sparse", description: "Few events, empty À venir section" },
-    { mode: "no-upcoming", label: "No Upcoming", description: "Events in Today and 6-day, but nothing in À venir" },
+    {
+      mode: "",
+      label: "Normal",
+      description: "Real calendar data from Home Assistant",
+    },
+    {
+      mode: "true",
+      label: "Overflow",
+      description:
+        "Many events to test overflow indicators and text truncation",
+    },
+    {
+      mode: "empty",
+      label: "Empty",
+      description: "Completely empty calendar (no events at all)",
+    },
+    {
+      mode: "no-today",
+      label: "No Today",
+      description: "No events today, but other days have events",
+    },
+    {
+      mode: "sparse",
+      label: "Sparse",
+      description: "Few events, empty À venir section",
+    },
+    {
+      mode: "no-upcoming",
+      label: "No Upcoming",
+      description: "Events in Today and 6-day, but nothing in À venir",
+    },
   ];
 
-  const previewsHtml = debugModes.map(({ mode, label, description }) => {
-    const url = mode ? `/calendar/preview?debug=${mode}` : "/calendar/preview";
-    return `
+  const previewsHtml = debugModes
+    .map(({ mode, label, description }) => {
+      const url = mode
+        ? `/calendar/preview?debug=${mode}`
+        : "/calendar/preview";
+      return `
       <div class="preview-card">
         <h3>${label}</h3>
         <p>${description}</p>
@@ -1370,7 +2313,8 @@ app.get("/debug", (req, res) => {
         </a>
       </div>
     `;
-  }).join("");
+    })
+    .join("");
 
   res.send(`
     <!DOCTYPE html>
@@ -1425,31 +2369,39 @@ app.get("/debug", (req, res) => {
 interface WeatherForecast {
   datetime: string;
   condition: string;
-  temperature: number | null;  // High temp (can be null for current day)
-  templow: number | null;      // Low temp
+  temperature: number | null; // High temp (can be null for current day)
+  templow: number | null; // Low temp
   precipitation_probability: number;
 }
 
 // Fetch weather forecast using Home Assistant's weather.get_forecasts service (HA 2024.1+)
-async function fetchWeatherForecast(entityId: string, type: "daily" | "hourly" = "daily"): Promise<WeatherForecast[] | null> {
+async function fetchWeatherForecast(
+  entityId: string,
+  type: "daily" | "hourly" = "daily",
+): Promise<WeatherForecast[] | null> {
   if (!config) return null;
 
   try {
     // Use the weather.get_forecasts service with ?return_response query param
-    const response = await fetch(`${config.haUrl}/api/services/weather/get_forecasts?return_response`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${config.haToken}`,
-        "Content-Type": "application/json",
+    const response = await fetch(
+      `${config.haUrl}/api/services/weather/get_forecasts?return_response`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${config.haToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          type: type,
+          entity_id: entityId,
+        }),
       },
-      body: JSON.stringify({
-        type: type,
-        entity_id: entityId
-      })
-    });
+    );
 
     if (response.ok) {
-      const result = await response.json() as { service_response?: Record<string, { forecast?: WeatherForecast[] }> };
+      const result = (await response.json()) as {
+        service_response?: Record<string, { forecast?: WeatherForecast[] }>;
+      };
       // Response format: { "service_response": { "weather.entity_id": { "forecast": [...] } } }
       const forecast = result?.service_response?.[entityId]?.forecast;
       if (forecast) {
@@ -1475,7 +2427,7 @@ async function getWeatherForRendering(): Promise<DayForecast[]> {
       return [];
     }
 
-    return forecasts.map(f => ({
+    return forecasts.map((f) => ({
       date: startOfDay(parseISO(f.datetime)),
       condition: f.condition,
       tempHigh: f.temperature,
@@ -1492,33 +2444,37 @@ app.get("/debug/weather", async (req, res) => {
   try {
     // Get all states and filter for weather entities
     const states = await haFetch("/api/states");
-    const weatherEntities = states.filter((s: any) => s.entity_id.startsWith("weather."));
+    const weatherEntities = states.filter((s: any) =>
+      s.entity_id.startsWith("weather."),
+    );
 
     // For each weather entity, try to get forecast
-    const results = await Promise.all(weatherEntities.map(async (entity: any) => {
-      // Check if forecast is in attributes (older HA versions)
-      let forecast = entity.attributes.forecast || null;
+    const results = await Promise.all(
+      weatherEntities.map(async (entity: any) => {
+        // Check if forecast is in attributes (older HA versions)
+        let forecast = entity.attributes.forecast || null;
 
-      // If not, try template API
-      if (!forecast) {
-        forecast = await fetchWeatherForecast(entity.entity_id);
-      }
+        // If not, try template API
+        if (!forecast) {
+          forecast = await fetchWeatherForecast(entity.entity_id);
+        }
 
-      return {
-        entity_id: entity.entity_id,
-        state: entity.state,
-        attributes: {
-          temperature: entity.attributes.temperature,
-          temperature_unit: entity.attributes.temperature_unit,
-          humidity: entity.attributes.humidity,
-          wind_speed: entity.attributes.wind_speed,
-          wind_speed_unit: entity.attributes.wind_speed_unit,
-          friendly_name: entity.attributes.friendly_name,
-          supported_features: entity.attributes.supported_features,
-        },
-        forecast: forecast
-      };
-    }));
+        return {
+          entity_id: entity.entity_id,
+          state: entity.state,
+          attributes: {
+            temperature: entity.attributes.temperature,
+            temperature_unit: entity.attributes.temperature_unit,
+            humidity: entity.attributes.humidity,
+            wind_speed: entity.attributes.wind_speed,
+            wind_speed_unit: entity.attributes.wind_speed_unit,
+            friendly_name: entity.attributes.friendly_name,
+            supported_features: entity.attributes.supported_features,
+          },
+          forecast: forecast,
+        };
+      }),
+    );
 
     res.json(results);
   } catch (e) {
@@ -1533,18 +2489,21 @@ app.get("/debug/events", async (req, res) => {
     const dateFilter = req.query.date as string;
     let filtered = events;
     if (dateFilter) {
-      filtered = events.filter(e =>
-        e.start.toISOString().startsWith(dateFilter) ||
-        e.end.toISOString().startsWith(dateFilter)
+      filtered = events.filter(
+        (e) =>
+          e.start.toISOString().startsWith(dateFilter) ||
+          e.end.toISOString().startsWith(dateFilter),
       );
     }
-    res.json(filtered.map(e => ({
-      title: e.title,
-      start: e.start.toISOString(),
-      end: e.end.toISOString(),
-      allDay: e.allDay,
-      calendarIcon: e.calendarIcon
-    })));
+    res.json(
+      filtered.map((e) => ({
+        title: e.title,
+        start: e.start.toISOString(),
+        end: e.end.toISOString(),
+        allDay: e.allDay,
+        calendarIcon: e.calendarIcon,
+      })),
+    );
   } catch (e) {
     res.status(500).json({ error: String(e) });
   }
@@ -1570,14 +2529,19 @@ app.get("/calendar/icon-test", async (_req, res) => {
   ctx.font = "bold 12px sans-serif";
   ctx.textBaseline = "top";
   ctx.fillStyle = "#000000";
-  ctx.fillText("11px - Goal: icon bottom aligns with '09:00' bottom. Red line = text bottom.", 10, 8);
+  ctx.fillText(
+    "11px - Goal: icon bottom aligns with '09:00' bottom. Red line = text bottom.",
+    10,
+    8,
+  );
 
   ctx.font = `${fontSize}px sans-serif`;
   ctx.textBaseline = "top";
 
   // Measure reference text "09:00"
   const timeMetrics = ctx.measureText("09:00");
-  const timeHeight = timeMetrics.actualBoundingBoxAscent + timeMetrics.actualBoundingBoxDescent;
+  const timeHeight =
+    timeMetrics.actualBoundingBoxAscent + timeMetrics.actualBoundingBoxDescent;
 
   CALENDAR_ICONS.forEach((icon, i) => {
     const x = 30 + (i % 8) * 105;
@@ -1597,7 +2561,9 @@ app.get("/calendar/icon-test", async (_req, res) => {
 
     // Measure icon
     const iconMetrics = ctx.measureText(icon);
-    const iconHeight = iconMetrics.actualBoundingBoxAscent + iconMetrics.actualBoundingBoxDescent;
+    const iconHeight =
+      iconMetrics.actualBoundingBoxAscent +
+      iconMetrics.actualBoundingBoxDescent;
 
     // Calculate offset to align icon bottom with time bottom
     const offsetForBottomAlign = timeHeight - iconHeight;
@@ -1615,7 +2581,11 @@ app.get("/calendar/icon-test", async (_req, res) => {
     ctx.fillStyle = "#666666";
     ctx.fillText(`${icon} h=${iconHeight.toFixed(1)}`, x + 40, rowY + 20);
     ctx.fillText(`off=${offsetForBottomAlign.toFixed(1)}`, x + 40, rowY + 32);
-    ctx.fillText(`factor=${(offsetForBottomAlign / fontSize).toFixed(2)}`, x + 40, rowY + 44);
+    ctx.fillText(
+      `factor=${(offsetForBottomAlign / fontSize).toFixed(2)}`,
+      x + 40,
+      rowY + 44,
+    );
 
     ctx.font = `${fontSize}px sans-serif`;
   });

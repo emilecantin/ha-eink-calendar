@@ -3,6 +3,8 @@ import {
   Canvas,
   CanvasRenderingContext2D,
   registerFont,
+  Image,
+  loadImage,
 } from "canvas";
 import {
   format,
@@ -18,6 +20,7 @@ import {
 import { fr } from "date-fns/locale";
 import crypto from "crypto";
 import path from "path";
+import fs from "fs";
 
 // Register Inter font family
 const fontsDir = path.join(__dirname, "fonts");
@@ -62,6 +65,146 @@ const COLOR_RED = "#FF0000";
 // Layout constants
 const MARGIN = 16;
 
+// Collection icon cache - clear it to bust cache
+const collectionIconCache = new Map<string, Canvas>();
+collectionIconCache.clear(); // Force fresh load on server restart
+
+// Load collection icon PNG and scale to specified size
+async function loadCollectionIcon(
+  iconName: string,
+  size: number,
+): Promise<Canvas | null> {
+  const cacheKey = `${iconName}-${size}`;
+  // Disable cache for debugging
+  // if (collectionIconCache.has(cacheKey)) {
+  //   return collectionIconCache.get(cacheKey)!;
+  // }
+
+  try {
+    const iconsDir = path.join(__dirname, "collection-icons");
+    const pngPath = path.join(iconsDir, `${iconName}.png`);
+
+    if (!fs.existsSync(pngPath)) {
+      console.warn(`Collection icon not found: ${iconName}`);
+      return null;
+    }
+
+    console.log(`Loading PNG ${iconName}, size ${size}px from ${pngPath}`);
+
+    // Load the pre-rendered PNG (72px with black fill)
+    const img = await loadImage(pngPath);
+    console.log(`  Loaded image: ${img.width}x${img.height}`);
+
+    // Create a canvas at target size and downscale
+    const iconCanvas = createCanvas(size, size);
+    const iconCtx = iconCanvas.getContext("2d");
+
+    // Draw the image scaled to target size (no background - keep transparency)
+    iconCtx.drawImage(img, 0, 0, size, size);
+    console.log(
+      `  Created icon canvas: ${iconCanvas.width}x${iconCanvas.height}`,
+    );
+
+    // DEBUG: Save the icon canvas to verify pixels
+    if (iconName === "garbage" && size === 18) {
+      const fs = require("fs");
+      const debugPath = path.join(
+        __dirname,
+        "collection-icons",
+        "debug-garbage-18.png",
+      );
+      const buffer = iconCanvas.toBuffer("image/png");
+      fs.writeFileSync(debugPath, buffer);
+      console.log(`  DEBUG: Saved icon canvas to ${debugPath}`);
+    }
+
+    // Don't cache for now - always reload to debug
+    // collectionIconCache.set(cacheKey, iconCanvas);
+    return iconCanvas;
+  } catch (error) {
+    console.error(`Error loading collection icon ${iconName}:`, error);
+    return null;
+  }
+}
+
+// Draw a collection icon at the specified position
+async function drawCollectionIcon(
+  ctx: CanvasRenderingContext2D,
+  iconName: string,
+  x: number,
+  y: number,
+  size: number,
+  isRed: boolean,
+): Promise<number> {
+  // Only draw icons on the red layer
+  if (!isRed) {
+    return size;
+  }
+
+  console.log(
+    `Drawing collection icon: ${iconName} at (${x}, ${y}) size ${size}`,
+  );
+  const iconCanvas = await loadCollectionIcon(iconName, size);
+  if (!iconCanvas) {
+    console.log(`  Failed to load icon canvas for ${iconName}`);
+    return 0;
+  }
+
+  try {
+    const drawY = y - size;
+    console.log(`  Drawing at final coords: (${x}, ${drawY})`);
+
+    // Get the icon's image data to convert black pixels to red
+    const iconCtx = iconCanvas.getContext("2d");
+    const imageData = iconCtx.getImageData(0, 0, size, size);
+    const data = imageData.data;
+
+    // Convert black pixels to red (for red layer rendering)
+    // Red layer bitmap needs RGB(255, 0, 0) to be detected as colored by imageDataTo1Bit
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const b = data[i + 2];
+      const a = data[i + 3];
+
+      // If pixel is black (or dark) and not transparent
+      if (r < 128 && g < 128 && b < 128 && a > 0) {
+        data[i] = 255; // R = 255 (red)
+        data[i + 1] = 0; // G = 0
+        data[i + 2] = 0; // B = 0
+        // Keep alpha unchanged
+      } else {
+        // Make non-black pixels transparent
+        data[i + 3] = 0;
+      }
+    }
+
+    // Create temporary canvas with converted pixels
+    const redIconCanvas = createCanvas(size, size);
+    const redIconCtx = redIconCanvas.getContext("2d");
+    redIconCtx.putImageData(imageData, 0, 0);
+
+    // Save context state
+    ctx.save();
+
+    // Ensure no transform or alpha issues
+    ctx.globalAlpha = 1.0;
+    ctx.globalCompositeOperation = "source-over";
+
+    // Draw the red icon
+    ctx.drawImage(redIconCanvas, x, drawY, size, size);
+
+    // Restore context
+    ctx.restore();
+
+    console.log(`  Successfully drew ${iconName}`);
+    return size;
+  } catch (error) {
+    console.error(`Error drawing collection icon ${iconName}:`, error);
+    return 0;
+  }
+}
+
 // Layout type
 export type LayoutMode = "portrait" | "landscape";
 
@@ -69,6 +212,15 @@ export type LayoutMode = "portrait" | "landscape";
 export interface LegendItem {
   icon: string;
   name: string;
+}
+
+// Indicator data structure for binary sensor display
+export interface IndicatorData {
+  entityId: string;
+  state: "on" | "off";
+  label: string;
+  icon: string;
+  shouldDisplay: boolean;
 }
 
 // Vertical offset adjustments for icons (fraction of font size to shift)
@@ -133,6 +285,7 @@ export interface CalendarEvent {
   allDay?: boolean;
   calendarColor?: string;
   calendarIcon?: string; // Icon/letter to identify the calendar
+  calendarId?: string; // Entity ID of the calendar this event belongs to
 }
 
 // Event filter result with day-specific indicators
@@ -164,6 +317,80 @@ function getEventsForDay(events: CalendarEvent[], day: Date): EventForDay[] {
       startsOnDay: isSameDay(e.start, day),
       endsOnDay: isSameDay(e.end, day),
     }));
+}
+
+/**
+ * Gets collection calendar icons for a specific day
+ * Returns icons for each collection type found in events on this day
+ */
+function getCollectionIconsForDay(
+  events: CalendarEvent[],
+  day: Date,
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+): string[] {
+  if (collectionCalendars.length === 0 || collectionTypes.length === 0)
+    return [];
+
+  const icons: string[] = [];
+  const foundTypes = new Set<string>();
+
+  // Find all collection events on this day
+  const collectionEvents = events.filter(
+    (e) =>
+      e.calendarId &&
+      collectionCalendars.includes(e.calendarId) &&
+      e.allDay &&
+      isSameDay(e.start, day),
+  );
+
+  // Debug logging
+  if (collectionEvents.length > 0) {
+    console.log(
+      `Collection events on ${day.toDateString()}:`,
+      collectionEvents.map((e) => ({
+        title: e.title,
+        calendarId: e.calendarId,
+      })),
+    );
+  }
+
+  // Keywords for matching event titles to collection types
+  const typeKeywords: { [typeName: string]: string[] } = {
+    Garbage: ["garbage", "trash", "waste", "déchet", "ordure", "poubelle"],
+    Recycling: ["recycling", "recycle", "recyclage", "récupération"],
+    Compost: ["compost", "organic", "organique", "food waste"],
+    "Yard Waste": ["yard", "green", "vert", "garden"],
+    Glass: ["glass", "verre"],
+    Paper: ["paper", "papier"],
+    Cardboard: ["cardboard", "carton"],
+  };
+
+  // Match each event title against collection types using keywords
+  for (const event of collectionEvents) {
+    const titleLower = event.title.toLowerCase();
+
+    for (const type of collectionTypes) {
+      const keywords = typeKeywords[type.name] || [type.name.toLowerCase()];
+
+      if (
+        keywords.some((kw) => titleLower.includes(kw)) &&
+        !foundTypes.has(type.name)
+      ) {
+        console.log(
+          `  Matched "${event.title}" to ${type.name} (${type.icon})`,
+        );
+        icons.push(type.icon);
+        foundTypes.add(type.name);
+      }
+    }
+  }
+
+  if (icons.length > 0) {
+    console.log(`  Returning icons for ${day.toDateString()}:`, icons);
+  }
+
+  return icons;
 }
 
 // Weather forecast for a single day
@@ -297,11 +524,66 @@ function wrapText(
   return lines;
 }
 
+// Draw indicator bar (for binary sensors like garbage day reminders)
+function drawIndicators(
+  ctx: CanvasRenderingContext2D,
+  indicators: IndicatorData[],
+  x: number,
+  y: number,
+  maxWidth: number,
+  isRed: boolean,
+): number {
+  if (indicators.length === 0) return 0;
+
+  const indicatorHeight = 30;
+  const padding = 8;
+
+  if (isRed) {
+    // Draw red background for emphasis
+    ctx.fillStyle = COLOR_RED;
+    ctx.fillRect(x, y, maxWidth, indicatorHeight);
+
+    // White text on red background (like weekend headers)
+    ctx.fillStyle = COLOR_WHITE;
+    ctx.font = "bold 18px Inter";
+
+    let currentX = x + padding;
+    indicators.forEach((indicator) => {
+      const text = `${indicator.icon} ${indicator.label}`;
+      const textWidth = ctx.measureText(text).width;
+
+      if (currentX + textWidth + padding <= x + maxWidth) {
+        ctx.fillText(text, currentX, y + 20);
+        currentX += textWidth + 20; // Space between indicators
+      }
+    });
+  } else {
+    // Draw indicator text (black layer)
+    ctx.fillStyle = COLOR_BLACK;
+    ctx.font = "bold 18px Inter";
+
+    let currentX = x + padding;
+    indicators.forEach((indicator) => {
+      const text = `${indicator.icon} ${indicator.label}`;
+      const textWidth = ctx.measureText(text).width;
+
+      // Check if it fits on current line
+      if (currentX + textWidth + padding <= x + maxWidth) {
+        ctx.fillText(text, currentX, y + 20);
+        currentX += textWidth + 20; // Space between indicators
+      }
+    });
+  }
+
+  return indicatorHeight + 8; // Return height used (including bottom padding)
+}
+
 function drawTodaySection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
   isRed: boolean,
+  indicators: IndicatorData[] = [],
 ): void {
   const sectionY = 0;
   const sectionHeight = TODAY_SECTION_HEIGHT;
@@ -318,9 +600,22 @@ function drawTodaySection(
     );
   }
 
+  // Draw indicator bar at top if any indicators are present
+  let indicatorHeight = 0;
+  if (indicators.length > 0) {
+    indicatorHeight = drawIndicators(
+      ctx,
+      indicators,
+      MARGIN + 10,
+      sectionY + MARGIN + 10,
+      PORTRAIT_W - 2 * MARGIN - 20,
+      isRed,
+    );
+  }
+
   // Header area
   const headerX = MARGIN + 10;
-  const headerY = sectionY + MARGIN + 10;
+  const headerY = sectionY + MARGIN + 10 + indicatorHeight;
 
   if (!isRed) {
     // Date header
@@ -693,14 +988,18 @@ function drawUpcomingSection(
 // Landscape Layout Drawing Functions
 // ============================================================
 
-function drawLandscapeTodaySection(
+async function drawLandscapeTodaySection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
   isRed: boolean,
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
-): void {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+  allEvents: CalendarEvent[] = [],
+): Promise<void> {
   const sectionX = 0;
   const sectionWidth = LANDSCAPE_LEFT_WIDTH;
   const sectionHeight = LANDSCAPE_H;
@@ -717,9 +1016,22 @@ function drawLandscapeTodaySection(
     );
   }
 
+  // Draw indicator bar at top if any indicators are present
+  let indicatorHeight = 0;
+  if (indicators.length > 0) {
+    indicatorHeight = drawIndicators(
+      ctx,
+      indicators,
+      MARGIN + 10,
+      MARGIN + 10,
+      sectionWidth - MARGIN - 20,
+      isRed,
+    );
+  }
+
   // Header - standardized style matching day columns
   const headerX = MARGIN + 10;
-  const headerY = MARGIN;
+  const headerY = MARGIN + indicatorHeight;
   const headerHeight = 70;
   const isWeekendDay = isWeekend(today);
 
@@ -941,6 +1253,26 @@ function drawLandscapeTodaySection(
     ctx.fillText(`+ ${moreCount} autres événements`, headerX, y);
   }
 
+  // Collection icons above the legend (lower right corner of Today section)
+  const collectionIcons = getCollectionIconsForDay(
+    allEvents.length > 0 ? allEvents : events,
+    today,
+    collectionCalendars,
+    collectionTypes,
+  );
+  if (collectionIcons.length > 0) {
+    const iconSize = 18;
+    const iconSpacing = 4;
+    let currentX =
+      sectionWidth - MARGIN - collectionIcons.length * (iconSize + iconSpacing);
+    const iconY = legendTop - 8; // 8px above legend
+
+    for (const iconName of collectionIcons) {
+      await drawCollectionIcon(ctx, iconName, currentX, iconY, iconSize, isRed);
+      currentX += iconSize + iconSpacing;
+    }
+  }
+
   // Legend at the bottom of the Today section
   if (legend.length > 0 && !isRed) {
     // "Légende" header
@@ -970,13 +1302,17 @@ function drawLandscapeTodaySection(
   }
 }
 
-function drawLandscapeWeekSection(
+async function drawLandscapeWeekSection(
   ctx: CanvasRenderingContext2D,
   events: CalendarEvent[],
   today: Date,
   isRed: boolean,
   weather: DayForecast[] = [],
-): void {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+  allEvents: CalendarEvent[] = [],
+): Promise<void> {
   const sectionX = LANDSCAPE_LEFT_WIDTH;
   const sectionY = 0;
   const sectionWidth = LANDSCAPE_RIGHT_WIDTH;
@@ -1117,6 +1453,51 @@ function drawLandscapeWeekSection(
       drawDayHeader(COLOR_WHITE);
     }
 
+    // Draw indicators for this day (if any)
+    let indicatorOffset = 0;
+    if (indicators.length > 0) {
+      const indicatorY = gridTop + dayHeaderHeight + 4;
+      const indicatorHeight = 24;
+
+      if (isRed) {
+        // Draw red background bar
+        ctx.fillStyle = COLOR_RED;
+        ctx.fillRect(dayX + 2, indicatorY, dayWidth - 4, indicatorHeight);
+
+        // Draw indicator text in white
+        ctx.fillStyle = COLOR_WHITE;
+        ctx.font = "bold 14px Inter";
+
+        let textX = dayX + 6;
+        indicators.forEach((indicator: IndicatorData) => {
+          const text = `${indicator.icon} ${indicator.label}`;
+          const textWidth = ctx.measureText(text).width;
+
+          if (textX + textWidth < dayX + dayWidth - 6) {
+            ctx.fillText(text, textX, indicatorY + 16);
+            textX += textWidth + 8;
+          }
+        });
+      } else {
+        // Draw indicator text in black (black layer, no background)
+        ctx.fillStyle = COLOR_BLACK;
+        ctx.font = "bold 14px Inter";
+
+        let textX = dayX + 6;
+        indicators.forEach((indicator: IndicatorData) => {
+          const text = `${indicator.icon} ${indicator.label}`;
+          const textWidth = ctx.measureText(text).width;
+
+          if (textX + textWidth < dayX + dayWidth - 6) {
+            ctx.fillText(text, textX, indicatorY + 16);
+            textX += textWidth + 8;
+          }
+        });
+      }
+
+      indicatorOffset = indicatorHeight + 4;
+    }
+
     // Day events
     const dayEventsWithIndicators = getEventsForDay(events, day).sort(
       (a, b) => {
@@ -1126,7 +1507,7 @@ function drawLandscapeWeekSection(
       },
     );
 
-    const eventAreaTop = gridTop + dayHeaderHeight + 8;
+    const eventAreaTop = gridTop + dayHeaderHeight + 8 + indicatorOffset;
     const eventAreaHeight = sectionHeight - gridTop - dayHeaderHeight - 40;
     const eventHeight = Math.floor(eventAreaHeight / 8);
     const maxEventsToShow = 8;
@@ -1226,6 +1607,33 @@ function drawLandscapeWeekSection(
       ctx.fillStyle = COLOR_RED;
       ctx.font = "bold 14px Inter";
       ctx.fillText(`+${moreCount} autres`, dayX + 5, overflowY);
+    }
+
+    // Collection calendar icons (lower right corner of day cell)
+    const collectionIcons = getCollectionIconsForDay(
+      allEvents.length > 0 ? allEvents : events,
+      day,
+      collectionCalendars,
+      collectionTypes,
+    );
+    if (collectionIcons.length > 0) {
+      const iconSize = 14;
+      const iconSpacing = 3;
+      let currentX =
+        dayX + dayWidth - collectionIcons.length * (iconSize + iconSpacing) - 6;
+      const iconY = gridBottom - 6;
+
+      for (const iconName of collectionIcons) {
+        await drawCollectionIcon(
+          ctx,
+          iconName,
+          currentX,
+          iconY,
+          iconSize,
+          isRed,
+        );
+        currentX += iconSize + iconSpacing;
+      }
     }
   }
 }
@@ -1328,17 +1736,36 @@ function drawLandscapeUpcomingSection(
 const DISPLAY_W = 1304;
 const DISPLAY_H = 984;
 
-export function renderCalendar(
+export async function renderCalendar(
   events: CalendarEvent[],
   now: Date,
   layout: LayoutMode = "portrait",
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
-): RenderedCalendar {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+): Promise<RenderedCalendar> {
   if (layout === "landscape") {
-    return renderCalendarLandscape(events, now, legend, weather);
+    return await renderCalendarLandscape(
+      events,
+      now,
+      legend,
+      weather,
+      indicators,
+      collectionCalendars,
+      collectionTypes,
+    );
   }
-  return renderCalendarPortrait(events, now, legend, weather);
+  return renderCalendarPortrait(
+    events,
+    now,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+  );
 }
 
 function renderCalendarPortrait(
@@ -1346,6 +1773,9 @@ function renderCalendarPortrait(
   now: Date,
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
 ): RenderedCalendar {
   // Create canvas in portrait mode for rendering
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
@@ -1357,7 +1787,7 @@ function renderCalendarPortrait(
 
   // Draw all sections (black layer)
   ctx.textBaseline = "top";
-  drawTodaySection(ctx, events, now, false);
+  drawTodaySection(ctx, events, now, false, indicators);
   drawWeekSection(ctx, events, now, false);
   drawUpcomingSection(ctx, events, now, false);
 
@@ -1368,7 +1798,7 @@ function renderCalendarPortrait(
   ctx.fillStyle = COLOR_WHITE;
   ctx.fillRect(0, 0, PORTRAIT_W, PORTRAIT_H);
 
-  drawTodaySection(ctx, events, now, true);
+  drawTodaySection(ctx, events, now, true, indicators);
   drawWeekSection(ctx, events, now, true);
   drawUpcomingSection(ctx, events, now, true);
 
@@ -1397,12 +1827,15 @@ function renderCalendarPortrait(
   };
 }
 
-function renderCalendarLandscape(
+async function renderCalendarLandscape(
   events: CalendarEvent[],
   now: Date,
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
-): RenderedCalendar {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+): Promise<RenderedCalendar> {
   // Create canvas directly in landscape mode (no rotation needed)
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
@@ -1413,8 +1846,27 @@ function renderCalendarLandscape(
 
   // Draw all sections (black layer)
   ctx.textBaseline = "top";
-  drawLandscapeTodaySection(ctx, events, now, false, legend, weather);
-  drawLandscapeWeekSection(ctx, events, now, false, weather);
+  await drawLandscapeTodaySection(
+    ctx,
+    events,
+    now,
+    false,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+  );
+  await drawLandscapeWeekSection(
+    ctx,
+    events,
+    now,
+    false,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+  );
   drawLandscapeUpcomingSection(ctx, events, now, false);
 
   // Get black layer image data
@@ -1424,8 +1876,27 @@ function renderCalendarLandscape(
   ctx.fillStyle = COLOR_WHITE;
   ctx.fillRect(0, 0, LANDSCAPE_W, LANDSCAPE_H);
 
-  drawLandscapeTodaySection(ctx, events, now, true, legend, weather);
-  drawLandscapeWeekSection(ctx, events, now, true, weather);
+  await drawLandscapeTodaySection(
+    ctx,
+    events,
+    now,
+    true,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+  );
+  await drawLandscapeWeekSection(
+    ctx,
+    events,
+    now,
+    true,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+  );
   drawLandscapeUpcomingSection(ctx, events, now, true);
 
   const redImageData = ctx.getImageData(0, 0, LANDSCAPE_W, LANDSCAPE_H);
@@ -1539,17 +2010,42 @@ export function extractChunk(layer: Buffer, chunkIndex: 1 | 2): Buffer {
 }
 
 // For debugging: render to PNG
-export function renderToPng(
+export async function renderToPng(
   events: CalendarEvent[],
   now: Date,
   layout: LayoutMode = "portrait",
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
-): Buffer {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+  allEvents?: CalendarEvent[], // Full event list including collection events
+): Promise<Buffer> {
+  // Use allEvents for collection icon matching, or fall back to events if not provided
+  const eventsForCollectionIcons = allEvents || events;
+
   if (layout === "landscape") {
-    return renderToPngLandscape(events, now, legend, weather);
+    return await renderToPngLandscape(
+      events,
+      now,
+      legend,
+      weather,
+      indicators,
+      collectionCalendars,
+      collectionTypes,
+      eventsForCollectionIcons,
+    );
   }
-  return renderToPngPortrait(events, now, legend, weather);
+  return renderToPngPortrait(
+    events,
+    now,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+    eventsForCollectionIcons,
+  );
 }
 
 function renderToPngPortrait(
@@ -1557,6 +2053,10 @@ function renderToPngPortrait(
   now: Date,
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+  allEvents: CalendarEvent[] = [],
 ): Buffer {
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");
@@ -1567,12 +2067,12 @@ function renderToPngPortrait(
 
   // Draw all sections
   ctx.textBaseline = "top";
-  drawTodaySection(ctx, events, now, false);
+  drawTodaySection(ctx, events, now, false, indicators);
   drawWeekSection(ctx, events, now, false);
   drawUpcomingSection(ctx, events, now, false);
 
   // Draw red elements on top
-  drawTodaySection(ctx, events, now, true);
+  drawTodaySection(ctx, events, now, true, indicators);
   drawWeekSection(ctx, events, now, true);
   drawUpcomingSection(ctx, events, now, true);
 
@@ -1581,12 +2081,16 @@ function renderToPngPortrait(
   return canvas.toBuffer("image/png");
 }
 
-function renderToPngLandscape(
+async function renderToPngLandscape(
   events: CalendarEvent[],
   now: Date,
   legend: LegendItem[] = [],
   weather: DayForecast[] = [],
-): Buffer {
+  indicators: IndicatorData[] = [],
+  collectionCalendars: string[] = [],
+  collectionTypes: Array<{ name: string; icon: string }> = [],
+  allEvents: CalendarEvent[] = [],
+): Promise<Buffer> {
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
 
@@ -1596,13 +2100,55 @@ function renderToPngLandscape(
 
   // Draw all sections
   ctx.textBaseline = "top";
-  drawLandscapeTodaySection(ctx, events, now, false, legend, weather);
-  drawLandscapeWeekSection(ctx, events, now, false, weather);
+  await drawLandscapeTodaySection(
+    ctx,
+    events,
+    now,
+    false,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+    allEvents,
+  );
+  await drawLandscapeWeekSection(
+    ctx,
+    events,
+    now,
+    false,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+    allEvents,
+  );
   drawLandscapeUpcomingSection(ctx, events, now, false);
 
   // Draw red elements on top
-  drawLandscapeTodaySection(ctx, events, now, true, legend, weather);
-  drawLandscapeWeekSection(ctx, events, now, true, weather);
+  await drawLandscapeTodaySection(
+    ctx,
+    events,
+    now,
+    true,
+    legend,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+    allEvents,
+  );
+  await drawLandscapeWeekSection(
+    ctx,
+    events,
+    now,
+    true,
+    weather,
+    indicators,
+    collectionCalendars,
+    collectionTypes,
+    allEvents,
+  );
   drawLandscapeUpcomingSection(ctx, events, now, true);
 
   return canvas.toBuffer("image/png");

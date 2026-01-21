@@ -22,7 +22,17 @@ epcal/
 
 ## Server Development
 
-### Starting the server (PREFERRED - auto-restarts on changes)
+### CRITICAL: Server Process Management
+
+**THE USER MANAGES ALL SERVER PROCESSES. NEVER START, STOP, OR KILL ANY PROCESSES.**
+
+- The user starts the server themselves
+- Nodemon automatically restarts when files change
+- NEVER use `kill`, `pkill`, or any process management commands
+- NEVER suggest starting or stopping servers
+- If you need the server restarted, inform the user and let them do it
+
+### Starting the server (USER ONLY - auto-restarts on changes)
 
 ```bash
 cd /Users/emilecantin/Documents/Projets/iot/epcal/server
@@ -37,14 +47,11 @@ This uses nodemon which auto-restarts when .ts or .json files change.
 tail -f /tmp/epcal-server.log
 ```
 
-### Finding and stopping the server
+### Finding server process (for information only - DO NOT KILL)
 
 ```bash
-# Find PIDs
+# Find PIDs (information only)
 ps aux | grep "nodemon\|ts-node index.ts" | grep -v grep | awk '{print $2}'
-
-# Kill by specific PID
-kill <PIDs>
 ```
 
 ### Server endpoints
