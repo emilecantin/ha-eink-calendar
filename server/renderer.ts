@@ -80,9 +80,8 @@ const COLOR_RED = COLORS.RED;
 // Layout constants
 const MARGIN = MARGINS.STANDARD;
 
-// Collection icon cache - clear it to bust cache
+// Collection icon cache
 const collectionIconCache = new Map<string, Canvas>();
-collectionIconCache.clear(); // Force fresh load on server restart
 
 // Load collection icon PNG and scale to specified size
 async function loadCollectionIcon(
@@ -90,10 +89,11 @@ async function loadCollectionIcon(
   size: number,
 ): Promise<Canvas | null> {
   const cacheKey = `${iconName}-${size}`;
-  // Disable cache for debugging
-  // if (collectionIconCache.has(cacheKey)) {
-  //   return collectionIconCache.get(cacheKey)!;
-  // }
+
+  // Check cache first
+  if (collectionIconCache.has(cacheKey)) {
+    return collectionIconCache.get(cacheKey)!;
+  }
 
   try {
     const iconsDir = path.join(__dirname, "collection-icons");
@@ -104,11 +104,8 @@ async function loadCollectionIcon(
       return null;
     }
 
-    console.log(`Loading PNG ${iconName}, size ${size}px from ${pngPath}`);
-
     // Load the pre-rendered PNG (72px with black fill)
     const img = await loadImage(pngPath);
-    console.log(`  Loaded image: ${img.width}x${img.height}`);
 
     // Create a canvas at target size and downscale
     const iconCanvas = createCanvas(size, size);
@@ -116,25 +113,9 @@ async function loadCollectionIcon(
 
     // Draw the image scaled to target size (no background - keep transparency)
     iconCtx.drawImage(img, 0, 0, size, size);
-    console.log(
-      `  Created icon canvas: ${iconCanvas.width}x${iconCanvas.height}`,
-    );
 
-    // DEBUG: Save the icon canvas to verify pixels
-    if (iconName === "garbage" && size === 18) {
-      const fs = require("fs");
-      const debugPath = path.join(
-        __dirname,
-        "collection-icons",
-        "debug-garbage-18.png",
-      );
-      const buffer = iconCanvas.toBuffer("image/png");
-      fs.writeFileSync(debugPath, buffer);
-      console.log(`  DEBUG: Saved icon canvas to ${debugPath}`);
-    }
-
-    // Don't cache for now - always reload to debug
-    // collectionIconCache.set(cacheKey, iconCanvas);
+    // Cache the result
+    collectionIconCache.set(cacheKey, iconCanvas);
     return iconCanvas;
   } catch (error) {
     console.error(`Error loading collection icon ${iconName}:`, error);
@@ -156,18 +137,13 @@ async function drawCollectionIcon(
     return size;
   }
 
-  console.log(
-    `Drawing collection icon: ${iconName} at (${x}, ${y}) size ${size}`,
-  );
   const iconCanvas = await loadCollectionIcon(iconName, size);
   if (!iconCanvas) {
-    console.log(`  Failed to load icon canvas for ${iconName}`);
     return 0;
   }
 
   try {
     const drawY = y - size;
-    console.log(`  Drawing at final coords: (${x}, ${drawY})`);
 
     // Get the icon's image data to convert black pixels to red
     const iconCtx = iconCanvas.getContext("2d");
@@ -212,7 +188,6 @@ async function drawCollectionIcon(
     // Restore context
     ctx.restore();
 
-    console.log(`  Successfully drew ${iconName}`);
     return size;
   } catch (error) {
     console.error(`Error drawing collection icon ${iconName}:`, error);
@@ -359,17 +334,6 @@ function getCollectionIconsForDay(
       isSameDay(e.start, day),
   );
 
-  // Debug logging
-  if (collectionEvents.length > 0) {
-    console.log(
-      `Collection events on ${day.toDateString()}:`,
-      collectionEvents.map((e) => ({
-        title: e.title,
-        calendarId: e.calendarId,
-      })),
-    );
-  }
-
   // Keywords for matching event titles to collection types
   const typeKeywords: { [typeName: string]: string[] } = {
     Garbage: ["garbage", "trash", "waste", "déchet", "ordure", "poubelle"],
@@ -392,17 +356,10 @@ function getCollectionIconsForDay(
         keywords.some((kw) => titleLower.includes(kw)) &&
         !foundTypes.has(type.name)
       ) {
-        console.log(
-          `  Matched "${event.title}" to ${type.name} (${type.icon})`,
-        );
         icons.push(type.icon);
         foundTypes.add(type.name);
       }
     }
-  }
-
-  if (icons.length > 0) {
-    console.log(`  Returning icons for ${day.toDateString()}:`, icons);
   }
 
   return icons;
