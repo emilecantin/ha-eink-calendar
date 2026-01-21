@@ -1,7 +1,7 @@
 import { describe, it, expect } from "@jest/globals";
 import { extractChunk } from "../renderer";
 
-describe("Renderer - extractChunk", () => {
+describe("Renderer", () => {
   // Display constants from renderer.ts
   const DISPLAY_W = 1304;
   const DISPLAY_H = 984;
@@ -188,6 +188,104 @@ describe("Renderer - extractChunk", () => {
       expect(chunk1[1]).toBe(0x55);
       expect(chunk2[0]).toBe(0xaa); // chunkSize is even, so pattern continues
       expect(chunk2[1]).toBe(0x55);
+    });
+
+    it("should handle all-black bitmap (all pixels colored)", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize, 0x00); // All black
+
+      const chunk1 = extractChunk(bitmap, 1);
+      const chunk2 = extractChunk(bitmap, 2);
+
+      expect(chunk1.every((b) => b === 0x00)).toBe(true);
+      expect(chunk2.every((b) => b === 0x00)).toBe(true);
+    });
+
+    it("should handle all-white bitmap (all pixels white)", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize, 0xff); // All white
+
+      const chunk1 = extractChunk(bitmap, 1);
+      const chunk2 = extractChunk(bitmap, 2);
+
+      expect(chunk1.every((b) => b === 0xff)).toBe(true);
+      expect(chunk2.every((b) => b === 0xff)).toBe(true);
+    });
+  });
+
+  describe("Memory and performance characteristics", () => {
+    it("should handle maximum size bitmap efficiently", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize);
+
+      const startTime = Date.now();
+      const chunk1 = extractChunk(bitmap, 1);
+      const chunk2 = extractChunk(bitmap, 2);
+      const endTime = Date.now();
+
+      // Should complete very quickly (< 10ms for subarray operations)
+      expect(endTime - startTime).toBeLessThan(10);
+
+      expect(chunk1.length).toBe(chunkSize);
+      expect(chunk2.length).toBe(chunkSize);
+    });
+
+    it("should create view not copy (zero-copy operation)", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize);
+      bitmap.fill(0xff);
+
+      const chunk1 = extractChunk(bitmap, 1);
+
+      // Modify chunk - should affect original
+      chunk1[100] = 0xab;
+      chunk1[1000] = 0xcd;
+
+      expect(bitmap[100]).toBe(0xab);
+      expect(bitmap[1000]).toBe(0xcd);
+    });
+  });
+
+  describe("Integration with ESP32 display workflow", () => {
+    it("should produce correct chunk sizes for ESP32 transmission", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize);
+
+      const chunk1 = extractChunk(bitmap, 1);
+      const chunk2 = extractChunk(bitmap, 2);
+
+      // ESP32 can handle ~80KB chunks
+      const MAX_ESP32_CHUNK = 85000; // bytes
+      expect(chunk1.length).toBeLessThan(MAX_ESP32_CHUNK);
+      expect(chunk2.length).toBeLessThan(MAX_ESP32_CHUNK);
+
+      // Chunks should be roughly equal size
+      const sizeDiff = Math.abs(chunk1.length - chunk2.length);
+      expect(sizeDiff).toBeLessThanOrEqual(bytesPerRow); // At most one row difference
+    });
+
+    it("should split display horizontally for proper ESP32 rendering", () => {
+      const fullBitmapSize = bytesPerRow * DISPLAY_H;
+      const bitmap = Buffer.alloc(fullBitmapSize);
+
+      // Fill with row-identifiable pattern
+      for (let row = 0; row < DISPLAY_H; row++) {
+        const value = row % 256;
+        bitmap.fill(value, row * bytesPerRow, (row + 1) * bytesPerRow);
+      }
+
+      const chunk1 = extractChunk(bitmap, 1);
+      const chunk2 = extractChunk(bitmap, 2);
+
+      // Chunk 1 should contain rows 0-491
+      expect(chunk1[0]).toBe(0); // First row
+      expect(chunk1[(halfHeight - 1) * bytesPerRow]).toBe(
+        (halfHeight - 1) % 256,
+      ); // Last row of chunk 1
+
+      // Chunk 2 should contain rows 492-983
+      expect(chunk2[0]).toBe(halfHeight % 256); // First row of chunk 2
+      expect(chunk2[chunk2.length - bytesPerRow]).toBe((DISPLAY_H - 1) % 256); // Last row
     });
   });
 });
