@@ -135,6 +135,37 @@ export interface CalendarEvent {
   calendarIcon?: string; // Icon/letter to identify the calendar
 }
 
+// Event filter result with day-specific indicators
+interface EventForDay {
+  event: CalendarEvent;
+  startsOnDay: boolean;
+  endsOnDay: boolean;
+}
+
+/**
+ * Filters events for a specific day and returns them with indicators
+ * showing whether each event starts/ends on that day.
+ *
+ * Includes:
+ * - Events that start on this day
+ * - Multi-day events that span across this day (started before, end on/after)
+ */
+function getEventsForDay(events: CalendarEvent[], day: Date): EventForDay[] {
+  const dayStart = startOfDay(day);
+
+  return events
+    .filter((e) => {
+      const startsOnDay = isSameDay(e.start, day);
+      const spansDay = e.start < dayStart && e.end >= dayStart;
+      return startsOnDay || spansDay;
+    })
+    .map((e) => ({
+      event: e,
+      startsOnDay: isSameDay(e.start, day),
+      endsOnDay: isSameDay(e.end, day),
+    }));
+}
+
 // Weather forecast for a single day
 export interface DayForecast {
   date: Date;
@@ -311,18 +342,14 @@ function drawTodaySection(
   const eventLineHeight = 36;
   const maxEvents = 7;
 
-  const todayEvents = events
-    .filter(
-      (e) =>
-        isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)),
-    )
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
+  const todayEventsWithIndicators = getEventsForDay(events, today)
+    .sort((a, b) => a.event.start.getTime() - b.event.start.getTime())
     .slice(0, maxEvents);
 
   // Fixed width for time column (fits "00:00 - 00:00")
   const timeColumnWidth = 160;
 
-  todayEvents.forEach((event, index) => {
+  todayEventsWithIndicators.forEach(({ event }, index) => {
     const y = eventStartY + index * eventLineHeight;
     const timeStr = event.allDay
       ? "Journée"
@@ -348,9 +375,7 @@ function drawTodaySection(
   });
 
   // Show overflow indicator if needed
-  const totalTodayEvents = events.filter((e) =>
-    isSameDay(e.start, today),
-  ).length;
+  const totalTodayEvents = getEventsForDay(events, today).length;
   if (totalTodayEvents > maxEvents && !isRed) {
     const y = eventStartY + maxEvents * eventLineHeight;
     ctx.fillStyle = COLOR_BLACK;
@@ -454,28 +479,23 @@ function drawWeekSection(
     }
 
     // Day events - include events that start on this day OR span across this day
-    const dayEventsUnsorted = events
-      .filter((e) => {
-        const startsOnDay = isSameDay(e.start, day);
-        const dayStart = startOfDay(day);
-        const spansDay = e.start < dayStart && e.end >= dayStart;
-        return startsOnDay || spansDay;
-      })
-      .sort((a, b) => {
+    const dayEventsWithIndicators = getEventsForDay(events, day).sort(
+      (a, b) => {
         // All-day events first, then by start time
-        if (a.allDay && !b.allDay) return -1;
-        if (!a.allDay && b.allDay) return 1;
-        return a.start.getTime() - b.start.getTime();
-      });
+        if (a.event.allDay && !b.event.allDay) return -1;
+        if (!a.event.allDay && b.event.allDay) return 1;
+        return a.event.start.getTime() - b.event.start.getTime();
+      },
+    );
 
     const eventAreaTop = gridY + dayHeaderHeight + 8;
     const eventAreaHeight = gridHeight - dayHeaderHeight - 30; // Leave room for overflow indicator
     const eventHeight = Math.floor(eventAreaHeight / 7); // Fit ~7 events (with 2-line titles)
     const maxEventsToShow = 7;
-    const dayEvents = dayEventsUnsorted.slice(0, maxEventsToShow);
-    const hasMoreEvents = dayEventsUnsorted.length > maxEventsToShow;
+    const dayEvents = dayEventsWithIndicators.slice(0, maxEventsToShow);
+    const hasMoreEvents = dayEventsWithIndicators.length > maxEventsToShow;
 
-    dayEvents.forEach((event, index) => {
+    dayEvents.forEach(({ event, startsOnDay, endsOnDay }, index) => {
       const eventY = eventAreaTop + index * eventHeight;
 
       if (!isRed) {
@@ -484,9 +504,6 @@ function drawWeekSection(
 
         // Determine time/indicator string
         const isMultiDay = !isSameDay(event.start, event.end);
-        const startsToday = isSameDay(event.start, day);
-        // End date is already inclusive (converted from exclusive iCal format in index.ts)
-        const endsToday = isSameDay(event.end, day);
 
         let timeStr = "";
         let endTimeStr = "";
@@ -500,14 +517,14 @@ function drawWeekSection(
 
           // Draw the line
           ctx.beginPath();
-          ctx.moveTo(lineLeft + (startsToday ? triSize : 0), lineY);
-          ctx.lineTo(lineRight - (endsToday ? triSize : 0), lineY);
+          ctx.moveTo(lineLeft + (startsOnDay ? triSize : 0), lineY);
+          ctx.lineTo(lineRight - (endsOnDay ? triSize : 0), lineY);
           ctx.strokeStyle = COLOR_BLACK;
           ctx.lineWidth = 2;
           ctx.stroke();
 
           // Draw start triangle (pointing right) if starts today
-          if (startsToday) {
+          if (startsOnDay) {
             ctx.beginPath();
             ctx.moveTo(lineLeft, lineY - triSize);
             ctx.lineTo(lineLeft + triSize, lineY);
@@ -517,7 +534,7 @@ function drawWeekSection(
           }
 
           // Draw end triangle (pointing left) if ends today
-          if (endsToday) {
+          if (endsOnDay) {
             ctx.beginPath();
             ctx.moveTo(lineRight, lineY - triSize);
             ctx.lineTo(lineRight - triSize, lineY);
@@ -527,9 +544,9 @@ function drawWeekSection(
           }
         } else if (isMultiDay) {
           // Multi-day timed event
-          if (startsToday) {
+          if (startsOnDay) {
             timeStr = formatTime(event.start) + " ▶";
-          } else if (endsToday) {
+          } else if (endsOnDay) {
             timeStr = "◀ " + formatTime(event.end);
           } else {
             timeStr = "◀ ▶";
@@ -572,7 +589,7 @@ function drawWeekSection(
     // Red overflow indicator - positioned where the next event would go
     if (hasMoreEvents && isRed) {
       const overflowY = eventAreaTop + maxEventsToShow * eventHeight;
-      const moreCount = dayEventsUnsorted.length - maxEventsToShow;
+      const moreCount = dayEventsWithIndicators.length - maxEventsToShow;
       ctx.fillStyle = COLOR_RED;
       ctx.font = "bold 14px Inter";
       ctx.fillText(`+${moreCount} autres`, dayX + 5, overflowY);
@@ -807,122 +824,115 @@ function drawLandscapeTodaySection(
     (sectionHeight - eventStartY - reservedBottom) / eventBlockHeight,
   );
 
-  const todayEvents = events
-    .filter(
-      (e) =>
-        isSameDay(e.start, today) || (e.allDay && isSameDay(e.start, today)),
-    )
-    .sort((a, b) => a.start.getTime() - b.start.getTime())
+  const todayEventsWithIndicators = getEventsForDay(events, today)
+    .sort((a, b) => a.event.start.getTime() - b.event.start.getTime())
     .slice(0, maxEvents);
 
   const maxTitleWidth = eventWidth - 10;
 
-  todayEvents.forEach((event, index) => {
-    const blockY = eventStartY + index * eventBlockHeight;
-    const isMultiDay = !isSameDay(event.start, event.end);
-    const startsToday = isSameDay(event.start, today);
-    // End date is already inclusive (converted from exclusive iCal format in index.ts)
-    const endsToday = isSameDay(event.end, today);
+  todayEventsWithIndicators.forEach(
+    ({ event, startsOnDay, endsOnDay }, index) => {
+      const blockY = eventStartY + index * eventBlockHeight;
+      const isMultiDay = !isSameDay(event.start, event.end);
 
-    if (!isRed) {
-      ctx.fillStyle = COLOR_BLACK;
-      ctx.font = "bold 18px Inter";
+      if (!isRed) {
+        ctx.fillStyle = COLOR_BLACK;
+        ctx.font = "bold 18px Inter";
 
-      if (event.allDay) {
-        // All-day: horizontal line with triangles (symmetric margins)
-        const lineY = blockY + 8;
-        const lineLeft = headerX;
-        const lineRight = sectionWidth - 10; // Same 10px margin as left (headerX = MARGIN + 10)
-        const triSize = 6;
+        if (event.allDay) {
+          // All-day: horizontal line with triangles (symmetric margins)
+          const lineY = blockY + 8;
+          const lineLeft = headerX;
+          const lineRight = sectionWidth - 10; // Same 10px margin as left (headerX = MARGIN + 10)
+          const triSize = 6;
 
-        ctx.beginPath();
-        ctx.moveTo(lineLeft + (startsToday ? triSize : 0), lineY);
-        ctx.lineTo(lineRight - (endsToday ? triSize : 0), lineY);
-        ctx.strokeStyle = COLOR_BLACK;
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        if (startsToday) {
           ctx.beginPath();
-          ctx.moveTo(lineLeft, lineY - triSize);
-          ctx.lineTo(lineLeft + triSize, lineY);
-          ctx.lineTo(lineLeft, lineY + triSize);
-          ctx.closePath();
-          ctx.fill();
-        }
-        if (endsToday) {
-          ctx.beginPath();
-          ctx.moveTo(lineRight, lineY - triSize);
-          ctx.lineTo(lineRight - triSize, lineY);
-          ctx.lineTo(lineRight, lineY + triSize);
-          ctx.closePath();
-          ctx.fill();
-        }
+          ctx.moveTo(lineLeft + (startsOnDay ? triSize : 0), lineY);
+          ctx.lineTo(lineRight - (endsOnDay ? triSize : 0), lineY);
+          ctx.strokeStyle = COLOR_BLACK;
+          ctx.lineWidth = 2;
+          ctx.stroke();
 
-        // Icon centered on the line
-        if (event.calendarIcon) {
-          const iconWidth = ctx.measureText(event.calendarIcon).width;
-          const iconX = lineLeft + (lineRight - lineLeft - iconWidth) / 2;
-          const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
-          ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
-        }
-      } else if (isMultiDay) {
-        // Multi-day: time with arrows
-        let timeStr = "";
-        if (startsToday) {
-          timeStr = formatTime(event.start) + " ▶";
-        } else if (endsToday) {
-          timeStr = "◀ " + formatTime(event.end);
+          if (startsOnDay) {
+            ctx.beginPath();
+            ctx.moveTo(lineLeft, lineY - triSize);
+            ctx.lineTo(lineLeft + triSize, lineY);
+            ctx.lineTo(lineLeft, lineY + triSize);
+            ctx.closePath();
+            ctx.fill();
+          }
+          if (endsOnDay) {
+            ctx.beginPath();
+            ctx.moveTo(lineRight, lineY - triSize);
+            ctx.lineTo(lineRight - triSize, lineY);
+            ctx.lineTo(lineRight, lineY + triSize);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          // Icon centered on the line
+          if (event.calendarIcon) {
+            const iconWidth = ctx.measureText(event.calendarIcon).width;
+            const iconX = lineLeft + (lineRight - lineLeft - iconWidth) / 2;
+            const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
+            ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
+          }
+        } else if (isMultiDay) {
+          // Multi-day: time with arrows
+          let timeStr = "";
+          if (startsOnDay) {
+            timeStr = formatTime(event.start) + " ▶";
+          } else if (endsOnDay) {
+            timeStr = "◀ " + formatTime(event.end);
+          } else {
+            timeStr = "◀ ▶";
+          }
+          ctx.fillText(timeStr, headerX, blockY);
+
+          // Icon centered
+          if (event.calendarIcon) {
+            const iconWidth = ctx.measureText(event.calendarIcon).width;
+            const iconX = headerX + (eventWidth - iconWidth) / 2;
+            const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
+            ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
+          }
         } else {
-          timeStr = "◀ ▶";
-        }
-        ctx.fillText(timeStr, headerX, blockY);
+          // Regular event: start time left, end time right, icon centered
+          ctx.fillText(formatTime(event.start), headerX, blockY);
 
-        // Icon centered
-        if (event.calendarIcon) {
-          const iconWidth = ctx.measureText(event.calendarIcon).width;
-          const iconX = headerX + (eventWidth - iconWidth) / 2;
-          const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
-          ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
-        }
-      } else {
-        // Regular event: start time left, end time right, icon centered
-        ctx.fillText(formatTime(event.start), headerX, blockY);
+          const endTimeStr = formatTime(event.end);
+          const endTimeWidth = ctx.measureText(endTimeStr).width;
+          ctx.fillText(
+            endTimeStr,
+            headerX + eventWidth - endTimeWidth - 5,
+            blockY,
+          );
 
-        const endTimeStr = formatTime(event.end);
-        const endTimeWidth = ctx.measureText(endTimeStr).width;
-        ctx.fillText(
-          endTimeStr,
-          headerX + eventWidth - endTimeWidth - 5,
-          blockY,
-        );
-
-        // Icon centered
-        if (event.calendarIcon) {
-          const iconWidth = ctx.measureText(event.calendarIcon).width;
-          const iconX = headerX + (eventWidth - iconWidth) / 2;
-          const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
-          ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
+          // Icon centered
+          if (event.calendarIcon) {
+            const iconWidth = ctx.measureText(event.calendarIcon).width;
+            const iconX = headerX + (eventWidth - iconWidth) / 2;
+            const iconOffset = getIconCenterOffset(event.calendarIcon, 18);
+            ctx.fillText(event.calendarIcon, iconX, blockY + iconOffset);
+          }
         }
+
+        // Lines 2-3: Title (wrapped to 2 lines)
+        ctx.font = "20px Inter";
+        const titleLines = wrapText(ctx, event.title, maxTitleWidth, 2);
+        titleLines.forEach((line, lineIndex) => {
+          ctx.fillText(line, headerX, blockY + (lineIndex + 1) * lineHeight);
+        });
       }
-
-      // Lines 2-3: Title (wrapped to 2 lines)
-      ctx.font = "20px Inter";
-      const titleLines = wrapText(ctx, event.title, maxTitleWidth, 2);
-      titleLines.forEach((line, lineIndex) => {
-        ctx.fillText(line, headerX, blockY + (lineIndex + 1) * lineHeight);
-      });
-    }
-  });
+    },
+  );
 
   // Calculate legend position (at bottom of section)
   const legendX = headerX;
   const legendTop = sectionHeight - bottomPadding - legendHeight;
 
   // Overflow indicator - positioned where the next event would go, minus a few pixels
-  const totalTodayEvents = events.filter((e) =>
-    isSameDay(e.start, today),
-  ).length;
+  const totalTodayEvents = getEventsForDay(events, today).length;
   if (totalTodayEvents > maxEvents && isRed) {
     const moreCount = totalTodayEvents - maxEvents;
     const y = eventStartY + maxEvents * eventBlockHeight - 6;
@@ -1108,27 +1118,22 @@ function drawLandscapeWeekSection(
     }
 
     // Day events
-    const dayEventsUnsorted = events
-      .filter((e) => {
-        const startsOnDay = isSameDay(e.start, day);
-        const dayStart = startOfDay(day);
-        const spansDay = e.start < dayStart && e.end >= dayStart;
-        return startsOnDay || spansDay;
-      })
-      .sort((a, b) => {
-        if (a.allDay && !b.allDay) return -1;
-        if (!a.allDay && b.allDay) return 1;
-        return a.start.getTime() - b.start.getTime();
-      });
+    const dayEventsWithIndicators = getEventsForDay(events, day).sort(
+      (a, b) => {
+        if (a.event.allDay && !b.event.allDay) return -1;
+        if (!a.event.allDay && b.event.allDay) return 1;
+        return a.event.start.getTime() - b.event.start.getTime();
+      },
+    );
 
     const eventAreaTop = gridTop + dayHeaderHeight + 8;
     const eventAreaHeight = sectionHeight - gridTop - dayHeaderHeight - 40;
     const eventHeight = Math.floor(eventAreaHeight / 8);
     const maxEventsToShow = 8;
-    const dayEvents = dayEventsUnsorted.slice(0, maxEventsToShow);
-    const hasMoreEvents = dayEventsUnsorted.length > maxEventsToShow;
+    const dayEvents = dayEventsWithIndicators.slice(0, maxEventsToShow);
+    const hasMoreEvents = dayEventsWithIndicators.length > maxEventsToShow;
 
-    dayEvents.forEach((event, index) => {
+    dayEvents.forEach(({ event, startsOnDay, endsOnDay }, index) => {
       const eventY = eventAreaTop + index * eventHeight;
 
       if (!isRed) {
@@ -1136,9 +1141,6 @@ function drawLandscapeWeekSection(
         ctx.font = "bold 14px Inter";
 
         const isMultiDay = !isSameDay(event.start, event.end);
-        const startsToday = isSameDay(event.start, day);
-        // End date is already inclusive (converted from exclusive iCal format in index.ts)
-        const endsToday = isSameDay(event.end, day);
 
         let timeStr = "";
         let endTimeStr = "";
@@ -1151,13 +1153,13 @@ function drawLandscapeWeekSection(
           const triSize = 5;
 
           ctx.beginPath();
-          ctx.moveTo(lineLeft + (startsToday ? triSize : 0), lineY);
-          ctx.lineTo(lineRight - (endsToday ? triSize : 0), lineY);
+          ctx.moveTo(lineLeft + (startsOnDay ? triSize : 0), lineY);
+          ctx.lineTo(lineRight - (endsOnDay ? triSize : 0), lineY);
           ctx.strokeStyle = COLOR_BLACK;
           ctx.lineWidth = 2;
           ctx.stroke();
 
-          if (startsToday) {
+          if (startsOnDay) {
             ctx.beginPath();
             ctx.moveTo(lineLeft, lineY - triSize);
             ctx.lineTo(lineLeft + triSize, lineY);
@@ -1165,7 +1167,7 @@ function drawLandscapeWeekSection(
             ctx.closePath();
             ctx.fill();
           }
-          if (endsToday) {
+          if (endsOnDay) {
             ctx.beginPath();
             ctx.moveTo(lineRight, lineY - triSize);
             ctx.lineTo(lineRight - triSize, lineY);
@@ -1174,9 +1176,9 @@ function drawLandscapeWeekSection(
             ctx.fill();
           }
         } else if (isMultiDay) {
-          if (startsToday) {
+          if (startsOnDay) {
             timeStr = formatTime(event.start) + " ▶";
-          } else if (endsToday) {
+          } else if (endsOnDay) {
             timeStr = "◀ " + formatTime(event.end);
           } else {
             timeStr = "◀ ▶";
@@ -1220,7 +1222,7 @@ function drawLandscapeWeekSection(
     // Overflow indicator - positioned where the next event would go
     if (hasMoreEvents && isRed) {
       const overflowY = eventAreaTop + maxEventsToShow * eventHeight;
-      const moreCount = dayEventsUnsorted.length - maxEventsToShow;
+      const moreCount = dayEventsWithIndicators.length - maxEventsToShow;
       ctx.fillStyle = COLOR_RED;
       ctx.font = "bold 14px Inter";
       ctx.fillText(`+${moreCount} autres`, dayX + 5, overflowY);
