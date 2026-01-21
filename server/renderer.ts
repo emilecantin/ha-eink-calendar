@@ -256,12 +256,12 @@ const ICON_BOTTOM_OFFSETS: { [icon: string]: number } = {
   "⬢": 0.09,
 };
 
-function getIconCenterOffset(icon: string, fontSize: number): number {
+export function getIconCenterOffset(icon: string, fontSize: number): number {
   const factor = ICON_CENTER_OFFSETS[icon] || 0;
   return factor * fontSize;
 }
 
-function getIconBottomOffset(icon: string, fontSize: number): number {
+export function getIconBottomOffset(icon: string, fontSize: number): number {
   const factor = ICON_BOTTOM_OFFSETS[icon] || 0;
   return factor * fontSize;
 }
@@ -394,7 +394,7 @@ const WEATHER_ICONS: { [condition: string]: string } = {
 };
 
 // Get weather icon for a condition
-function getWeatherIcon(condition: string): string {
+export function getWeatherIcon(condition: string): string {
   return WEATHER_ICONS[condition.toLowerCase()] || "?";
 }
 
@@ -417,11 +417,11 @@ function capitalize(text: string): string {
   return text.replace(/^(\w)/, (s) => s.toLocaleUpperCase());
 }
 
-function formatTime(date: Date): string {
+export function formatTime(date: Date): string {
   return format(date, "HH:mm");
 }
 
-function truncateText(
+export function truncateText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
@@ -439,7 +439,7 @@ function truncateText(
   return truncated + "...";
 }
 
-function wrapText(
+export function wrapText(
   ctx: CanvasRenderingContext2D,
   text: string,
   maxWidth: number,
@@ -1955,7 +1955,7 @@ async function renderCalendarLandscape(
 // Rotate image data 90 degrees clockwise
 // Input: PORTRAIT_W × PORTRAIT_H (984 × 1304)
 // Output: PORTRAIT_H × PORTRAIT_W (1304 × 984)
-function rotateImageData90CW(imageData: {
+export function rotateImageData90CW(imageData: {
   width: number;
   height: number;
   data: Uint8ClampedArray;
@@ -1988,7 +1988,7 @@ function rotateImageData90CW(imageData: {
   return { width: newWidth, height: newHeight, data: newData };
 }
 
-function imageDataTo1Bit(
+export function imageDataTo1Bit(
   imageData: { width: number; height: number; data: Uint8ClampedArray },
   isRed: boolean,
 ): Buffer {
