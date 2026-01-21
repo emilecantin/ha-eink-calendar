@@ -14,6 +14,17 @@ import {
   type EventWithIndicators,
 } from "./event-renderer";
 import {
+  DISPLAY,
+  MARGINS,
+  LAYOUT_PORTRAIT,
+  LAYOUT_LANDSCAPE,
+  TYPOGRAPHY,
+  ICON_SIZES,
+  EVENT_DIMENSIONS,
+  COLORS,
+  LAYOUT_MISC,
+} from "./layout-config";
+import {
   format,
   startOfWeek,
   endOfWeek,
@@ -44,33 +55,30 @@ registerFont(path.join(fontsDir, "Inter-Bold.ttf"), {
   weight: "bold",
 });
 
-// Display dimensions
-// Portrait mode (rotated 90° for display): 984 wide × 1304 tall
-const PORTRAIT_W = 984;
-const PORTRAIT_H = 1304;
-
-// Landscape mode (native display orientation): 1304 wide × 984 tall
-const LANDSCAPE_W = 1304;
-const LANDSCAPE_H = 984;
+// Display dimensions - imported from layout-config.ts
+const PORTRAIT_W = DISPLAY.PORTRAIT.width;
+const PORTRAIT_H = DISPLAY.PORTRAIT.height;
+const LANDSCAPE_W = DISPLAY.LANDSCAPE.width;
+const LANDSCAPE_H = DISPLAY.LANDSCAPE.height;
 
 // Portrait section heights
-const TODAY_SECTION_HEIGHT = 450;
-const WEEK_SECTION_HEIGHT = 600;
-const UPCOMING_SECTION_HEIGHT = 254;
+const TODAY_SECTION_HEIGHT = LAYOUT_PORTRAIT.TODAY.height;
+const WEEK_SECTION_HEIGHT = LAYOUT_PORTRAIT.WEEK.height;
+const UPCOMING_SECTION_HEIGHT = LAYOUT_PORTRAIT.UPCOMING.height;
 
 // Landscape layout dimensions
-const LANDSCAPE_LEFT_WIDTH = 400; // Today section
-const LANDSCAPE_RIGHT_WIDTH = 904; // 6 days + upcoming (1304 - 400)
-const LANDSCAPE_WEEK_HEIGHT = 700; // 6 days section
-const LANDSCAPE_UPCOMING_HEIGHT = 284; // Upcoming section (984 - 700)
+const LANDSCAPE_LEFT_WIDTH = LAYOUT_LANDSCAPE.TODAY.width;
+const LANDSCAPE_RIGHT_WIDTH = LAYOUT_LANDSCAPE.RIGHT_PANEL.width;
+const LANDSCAPE_WEEK_HEIGHT = LAYOUT_LANDSCAPE.WEEK.height;
+const LANDSCAPE_UPCOMING_HEIGHT = LAYOUT_LANDSCAPE.UPCOMING.height;
 
-// Colors
-const COLOR_BLACK = "#000000";
-const COLOR_WHITE = "#FFFFFF";
-const COLOR_RED = "#FF0000";
+// Colors - imported from layout-config.ts
+const COLOR_BLACK = COLORS.BLACK;
+const COLOR_WHITE = COLORS.WHITE;
+const COLOR_RED = COLORS.RED;
 
 // Layout constants
-const MARGIN = 16;
+const MARGIN = MARGINS.STANDARD;
 
 // Collection icon cache - clear it to bust cache
 const collectionIconCache = new Map<string, Canvas>();
