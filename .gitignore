@@ -9,6 +9,7 @@ Thumbs.db
 # Node.js
 node_modules/
 npm-debug.log*
+coverage/
 
 # Server
 server/.epcal-config.json
