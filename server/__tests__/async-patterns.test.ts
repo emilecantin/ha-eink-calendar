@@ -1,27 +1,25 @@
-import { describe, it, expect } from '@jest/globals';
+import { describe, it, expect } from "@jest/globals";
 
 /**
  * Tests for async/await patterns that should be caught by ESLint
  * These tests demonstrate the types of bugs we want to prevent
  */
 
-describe('async/await patterns', () => {
-  describe('Promise handling', () => {
-    it('should properly await async functions', async () => {
+describe("async/await patterns", () => {
+  describe("Promise handling", () => {
+    it("should properly await async functions", async () => {
       const asyncFunction = async () => {
-        return new Promise((resolve) =>
-          setTimeout(() => resolve('done'), 10),
-        );
+        return new Promise((resolve) => setTimeout(() => resolve("done"), 10));
       };
 
       // Correct: await the promise
       const result = await asyncFunction();
-      expect(result).toBe('done');
+      expect(result).toBe("done");
     });
 
-    it('should catch missing await (would be caught by ESLint)', async () => {
+    it("should catch missing await (would be caught by ESLint)", async () => {
       const asyncFunction = async () => {
-        return 'immediate';
+        return "immediate";
       };
 
       // This test shows that without await, you get a Promise
@@ -30,43 +28,47 @@ describe('async/await patterns', () => {
 
       // Correct: with await
       const resultWithAwait = await asyncFunction();
-      expect(resultWithAwait).toBe('immediate');
+      expect(resultWithAwait).toBe("immediate");
     });
 
-    it('should properly return await from async functions', async () => {
+    it("should properly return await from async functions", async () => {
       const fetchData = async () => {
-        return await Promise.resolve({ data: 'test' });
+        return await Promise.resolve({ data: "test" });
       };
 
       const result = await fetchData();
-      expect(result).toEqual({ data: 'test' });
+      expect(result).toEqual({ data: "test" });
     });
   });
 
-  describe('Promise.all for parallel operations', () => {
-    it('should use Promise.all for parallel async operations', async () => {
+  describe("Promise.all for parallel operations", () => {
+    it("should use Promise.all for parallel async operations", async () => {
       const operation1 = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        return 'op1';
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return "op1";
       };
 
       const operation2 = async () => {
-        await new Promise((resolve) => setTimeout(resolve, 10));
-        return 'op2';
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        return "op2";
       };
 
       // Correct: parallel execution
       const startTime = Date.now();
-      const [result1, result2] = await Promise.all([operation1(), operation2()]);
+      const [result1, result2] = await Promise.all([
+        operation1(),
+        operation2(),
+      ]);
       const duration = Date.now() - startTime;
 
-      expect(result1).toBe('op1');
-      expect(result2).toBe('op2');
-      // Should complete in ~10ms (parallel), not ~20ms (sequential)
-      expect(duration).toBeLessThan(25);
+      expect(result1).toBe("op1");
+      expect(result2).toBe("op2");
+      // Should complete in ~20ms (parallel), not ~40ms (sequential)
+      // Use more forgiving threshold to avoid flakiness
+      expect(duration).toBeLessThan(35);
     });
 
-    it('should demonstrate sequential vs parallel execution', async () => {
+    it("should demonstrate sequential vs parallel execution", async () => {
       const delay = (ms: number) =>
         new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -86,35 +88,35 @@ describe('async/await patterns', () => {
     });
   });
 
-  describe('Error handling in async functions', () => {
-    it('should properly catch errors in async functions', async () => {
+  describe("Error handling in async functions", () => {
+    it("should properly catch errors in async functions", async () => {
       const failingFunction = async () => {
-        throw new Error('Test error');
+        throw new Error("Test error");
       };
 
-      await expect(failingFunction()).rejects.toThrow('Test error');
+      await expect(failingFunction()).rejects.toThrow("Test error");
     });
 
-    it('should handle rejected promises with try/catch', async () => {
+    it("should handle rejected promises with try/catch", async () => {
       const riskyFunction = async () => {
         try {
-          await Promise.reject(new Error('Failed'));
-          return 'success';
+          await Promise.reject(new Error("Failed"));
+          return "success";
         } catch (error) {
-          return 'handled error';
+          return "handled error";
         }
       };
 
       const result = await riskyFunction();
-      expect(result).toBe('handled error');
+      expect(result).toBe("handled error");
     });
   });
 
-  describe('Collection icons bug scenario', () => {
+  describe("Collection icons bug scenario", () => {
     /**
      * This simulates the bug we had where collection icons weren't being awaited
      */
-    it('should demonstrate the importance of awaiting icon loading', async () => {
+    it("should demonstrate the importance of awaiting icon loading", async () => {
       const loadIcon = async (iconName: string): Promise<string> => {
         // Simulate async icon loading
         await new Promise((resolve) => setTimeout(resolve, 10));
@@ -127,17 +129,19 @@ describe('async/await patterns', () => {
         // return loadedIcons; // Returns array of Promises, not strings!
 
         // CORRECT: Use Promise.all to await all icon loads
-        const loadedIcons = await Promise.all(icons.map((name) => loadIcon(name)));
+        const loadedIcons = await Promise.all(
+          icons.map((name) => loadIcon(name)),
+        );
         return loadedIcons;
       };
 
-      const result = await renderWithIcons(['trash', 'recycling', 'compost']);
-      expect(result).toEqual(['icon_trash', 'icon_recycling', 'icon_compost']);
+      const result = await renderWithIcons(["trash", "recycling", "compost"]);
+      expect(result).toEqual(["icon_trash", "icon_recycling", "icon_compost"]);
       // All results should be strings, not Promises
-      expect(result.every((r) => typeof r === 'string')).toBe(true);
+      expect(result.every((r) => typeof r === "string")).toBe(true);
     });
 
-    it('should show what happens without proper await (the bug)', async () => {
+    it("should show what happens without proper await (the bug)", async () => {
       const loadIcon = async (iconName: string): Promise<string> => {
         await new Promise((resolve) => setTimeout(resolve, 10));
         return `icon_${iconName}`;
@@ -150,18 +154,18 @@ describe('async/await patterns', () => {
         return loadedIcons; // Returns Promises!
       };
 
-      const result = renderWithIconsBuggy(['trash', 'recycling']);
+      const result = renderWithIconsBuggy(["trash", "recycling"]);
       // These are Promises, not strings - this was the bug!
       expect(result[0]).toBeInstanceOf(Promise);
       expect(result[1]).toBeInstanceOf(Promise);
     });
   });
 
-  describe('Async function without await', () => {
-    it('should not mark function as async if it does not await', () => {
+  describe("Async function without await", () => {
+    it("should not mark function as async if it does not await", () => {
       // This would be caught by ESLint require-await rule
       const unnecessarilyAsync = async () => {
-        return 'synchronous value';
+        return "synchronous value";
       };
 
       // Even though it's marked async, it doesn't actually need to be
@@ -169,15 +173,15 @@ describe('async/await patterns', () => {
       expect(result).toBeInstanceOf(Promise);
     });
 
-    it('should use async only when actually awaiting', async () => {
+    it("should use async only when actually awaiting", async () => {
       // Correct: actually needs to be async
       const properlyAsync = async () => {
-        const value = await Promise.resolve('async value');
+        const value = await Promise.resolve("async value");
         return value;
       };
 
       const result = await properlyAsync();
-      expect(result).toBe('async value');
+      expect(result).toBe("async value");
     });
   });
 });
