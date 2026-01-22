@@ -18,11 +18,7 @@ import "./font-config";
 import { DISPLAY, COLORS } from "./layout-config";
 
 // Import utilities
-import {
-  rotateImageData90CW,
-  imageDataTo1Bit,
-  extractChunk,
-} from "./bitmap-utils";
+import { rotateImageData90CW, imageDataTo1Bit } from "./bitmap-utils";
 
 // Import types
 export type { CalendarEvent } from "./event-filters";
@@ -131,11 +127,11 @@ export async function renderCalendar(
 function renderCalendarPortrait(
   events: import("./event-filters").CalendarEvent[],
   now: Date,
-  legend: LegendItem[] = [],
-  weather: import("./weather-utils").DayForecast[] = [],
+  _legend: LegendItem[] = [],
+  _weather: import("./weather-utils").DayForecast[] = [],
   indicators: import("./section-renderers/indicators").IndicatorData[] = [],
-  collectionCalendars: string[] = [],
-  collectionTypes: Array<{ name: string; icon: string }> = [],
+  _collectionCalendars: string[] = [],
+  _collectionTypes: Array<{ name: string; icon: string }> = [],
 ): RenderedCalendar {
   // Create canvas in portrait mode for rendering
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
@@ -344,12 +340,12 @@ export async function renderToPng(
 function renderToPngPortrait(
   events: import("./event-filters").CalendarEvent[],
   now: Date,
-  legend: LegendItem[] = [],
-  weather: import("./weather-utils").DayForecast[] = [],
+  _legend: LegendItem[] = [],
+  _weather: import("./weather-utils").DayForecast[] = [],
   indicators: import("./section-renderers/indicators").IndicatorData[] = [],
-  collectionCalendars: string[] = [],
-  collectionTypes: Array<{ name: string; icon: string }> = [],
-  allEvents: import("./event-filters").CalendarEvent[] = [],
+  _collectionCalendars: string[] = [],
+  _collectionTypes: Array<{ name: string; icon: string }> = [],
+  _allEvents: import("./event-filters").CalendarEvent[] = [],
 ): Buffer {
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");

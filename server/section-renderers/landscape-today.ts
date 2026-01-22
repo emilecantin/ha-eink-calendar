@@ -8,9 +8,17 @@ import { fr } from "date-fns/locale";
 import { DISPLAY, MARGINS, LAYOUT_LANDSCAPE, COLORS } from "../layout-config";
 import { capitalize, wrapText } from "../text-utils";
 import { getIconCenterOffset, drawCollectionIcon } from "../icon-utils";
-import { getEventsForDay, getCollectionIconsForDay, CalendarEvent } from "../event-filters";
+import {
+  getEventsForDay,
+  getCollectionIconsForDay,
+  CalendarEvent,
+} from "../event-filters";
 import { drawIndicators, IndicatorData } from "./indicators";
-import { DayForecast, getWeatherIcon, getForecastForDate } from "../weather-utils";
+import {
+  DayForecast,
+  getWeatherIcon,
+  getForecastForDate,
+} from "../weather-utils";
 import { drawOverflowIndicator } from "../event-renderer";
 
 const LANDSCAPE_H = DISPLAY.LANDSCAPE.height;
@@ -51,7 +59,6 @@ export async function drawLandscapeTodaySection(
   collectionTypes: CollectionType[] = [],
   allEvents: CalendarEvent[] = [],
 ): Promise<void> {
-  const sectionX = 0;
   const sectionWidth = LANDSCAPE_LEFT_WIDTH;
   const sectionHeight = LANDSCAPE_H;
 
@@ -350,9 +357,10 @@ export async function drawLandscapeTodaySection(
       // Name
       const nameX = x + 20;
       const maxNameWidth = colWidth - 25;
-      const truncatedName = ctx.measureText(item.name).width <= maxNameWidth
-        ? item.name
-        : item.name.slice(0, Math.floor(maxNameWidth / 8)) + "...";
+      const truncatedName =
+        ctx.measureText(item.name).width <= maxNameWidth
+          ? item.name
+          : item.name.slice(0, Math.floor(maxNameWidth / 8)) + "...";
       ctx.fillText(truncatedName, nameX, y);
     });
   }

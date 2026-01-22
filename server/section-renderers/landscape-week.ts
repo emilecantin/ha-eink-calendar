@@ -7,12 +7,24 @@ import { format, addDays, isSameDay, isWeekend } from "date-fns";
 import { fr } from "date-fns/locale";
 import { DISPLAY, MARGINS, LAYOUT_LANDSCAPE, COLORS } from "../layout-config";
 import { wrapText } from "../text-utils";
-import { getIconCenterOffset, getIconBottomOffset, drawCollectionIcon } from "../icon-utils";
-import { getEventsForDay, getCollectionIconsForDay, CalendarEvent } from "../event-filters";
+import {
+  getIconCenterOffset,
+  getIconBottomOffset,
+  drawCollectionIcon,
+} from "../icon-utils";
+import {
+  getEventsForDay,
+  getCollectionIconsForDay,
+  CalendarEvent,
+} from "../event-filters";
 import { sortEventsByPriority } from "../event-renderer";
 import { drawOverflowIndicator } from "../event-renderer";
-import { DayForecast, getWeatherIcon, getForecastForDate } from "../weather-utils";
-import { IndicatorData, drawIndicators } from "./indicators";
+import {
+  DayForecast,
+  getWeatherIcon,
+  getForecastForDate,
+} from "../weather-utils";
+import { IndicatorData } from "./indicators";
 
 const LANDSCAPE_H = DISPLAY.LANDSCAPE.height;
 const LANDSCAPE_LEFT_WIDTH = LAYOUT_LANDSCAPE.TODAY.width;
@@ -46,7 +58,6 @@ export async function drawLandscapeWeekSection(
   allEvents: CalendarEvent[] = [],
 ): Promise<void> {
   const sectionX = LANDSCAPE_LEFT_WIDTH;
-  const sectionY = 0;
   const sectionWidth = LANDSCAPE_RIGHT_WIDTH;
   const sectionHeight = LANDSCAPE_WEEK_HEIGHT;
   const tomorrow = addDays(today, 1);

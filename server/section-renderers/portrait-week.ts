@@ -3,7 +3,7 @@
  */
 
 import { CanvasRenderingContext2D } from "canvas";
-import { format, addDays, isSameDay, isWeekend, differenceInDays } from "date-fns";
+import { format, addDays, isSameDay, isWeekend } from "date-fns";
 import { fr } from "date-fns/locale";
 import { DISPLAY, MARGINS, LAYOUT_PORTRAIT, COLORS } from "../layout-config";
 import { capitalize, formatTime, wrapText } from "../text-utils";
