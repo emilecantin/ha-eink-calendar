@@ -9,7 +9,9 @@ describe("async/await patterns", () => {
   describe("Promise handling", () => {
     it("should properly await async functions", async () => {
       const asyncFunction = async () => {
-        return new Promise((resolve) => setTimeout(() => resolve("done"), 10));
+        return await new Promise((resolve) =>
+          setTimeout(() => resolve("done"), 10),
+        );
       };
 
       // Correct: await the promise
@@ -102,7 +104,7 @@ describe("async/await patterns", () => {
         try {
           await Promise.reject(new Error("Failed"));
           return "success";
-        } catch (error) {
+        } catch (_error) {
           return "handled error";
         }
       };
