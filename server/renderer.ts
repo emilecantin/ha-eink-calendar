@@ -137,6 +137,10 @@ function renderCalendarPortrait(
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");
 
+  // Disable antialiasing to match Python PIL rendering
+  ctx.antialias = "none";
+  ctx.imageSmoothingEnabled = false;
+
   // White background
   ctx.fillStyle = COLOR_WHITE;
   ctx.fillRect(0, 0, PORTRAIT_W, PORTRAIT_H);
@@ -198,6 +202,10 @@ async function renderCalendarLandscape(
   // Create canvas directly in landscape mode (no rotation needed)
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
+
+  // Disable antialiasing to match Python PIL rendering
+  ctx.antialias = "none";
+  ctx.imageSmoothingEnabled = false;
 
   // White background
   ctx.fillStyle = COLOR_WHITE;
@@ -350,6 +358,10 @@ function renderToPngPortrait(
   const canvas = createCanvas(PORTRAIT_W, PORTRAIT_H);
   const ctx = canvas.getContext("2d");
 
+  // Disable antialiasing to match Python PIL rendering
+  ctx.antialias = "none";
+  ctx.imageSmoothingEnabled = false;
+
   // White background
   ctx.fillStyle = COLOR_WHITE;
   ctx.fillRect(0, 0, PORTRAIT_W, PORTRAIT_H);
@@ -385,6 +397,10 @@ async function renderToPngLandscape(
 ): Promise<Buffer> {
   const canvas = createCanvas(LANDSCAPE_W, LANDSCAPE_H);
   const ctx = canvas.getContext("2d");
+
+  // Disable antialiasing to match Python PIL rendering
+  ctx.antialias = "none";
+  ctx.imageSmoothingEnabled = false;
 
   // White background
   ctx.fillStyle = COLOR_WHITE;
