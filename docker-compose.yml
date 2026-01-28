@@ -1,8 +1,7 @@
 services:
-  epcal:
-    # Option 1: Build locally from source
+  # Original Node.js server (deprecated - to be removed)
+  epcal-server:
     build: ./server
-    # Option 2: Use pre-built image from GitLab Container Registry
     # image: registry.gitlab.com/emilecantin/epcal/addon:latest
     ports:
       - "4000:4000"
@@ -12,3 +11,25 @@ services:
       - CONFIG_PATH=/app/config/epcal-config.json
       - TZ=America/Toronto
     restart: unless-stopped
+    profiles:
+      - legacy # Only start with: docker-compose --profile legacy up
+
+  # Home Assistant test environment for integration development
+  homeassistant:
+    container_name: ha-epcal-test
+    image: homeassistant/home-assistant:latest
+    volumes:
+      - ./ha-test-config:/config
+      - ./custom_components/epcal:/config/custom_components/epcal:ro
+      - /etc/localtime:/etc/localtime:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+    environment:
+      - TZ=America/Toronto
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
