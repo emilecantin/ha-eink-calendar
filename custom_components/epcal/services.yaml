@@ -1,0 +1,39 @@
+authorize_device:
+  name: Authorize Device
+  description: Authorize a pending EPCAL device to access the calendar
+  fields:
+    device_id:
+      name: Device ID
+      description: The unique ID of the device to authorize
+      required: true
+      example: "epcal_a1b2c3d4"
+      selector:
+        text:
+
+deny_device:
+  name: Deny Device
+  description: Deny a pending EPCAL device access
+  fields:
+    device_id:
+      name: Device ID
+      description: The unique ID of the device to deny
+      required: true
+      example: "epcal_a1b2c3d4"
+      selector:
+        text:
+
+revoke_device:
+  name: Revoke Device
+  description: Revoke authorization from an EPCAL device
+  fields:
+    device_id:
+      name: Device ID
+      description: The unique ID of the device to revoke
+      required: true
+      example: "epcal_a1b2c3d4"
+      selector:
+        text:
+
+trigger_render:
+  name: Trigger Render
+  description: Force a manual re-render of the calendar display

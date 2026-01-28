@@ -1,0 +1,27 @@
+{
+  "include": [
+    "custom_components/epcal",
+    "analyze_diffs.py",
+    "analyze_diffs_simple.py",
+    "run_tests.py",
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    ".venv",
+    "venv",
+    "server",
+    "ha-test-config",
+  ],
+  "venvPath": "/opt/homebrew/lib/python3.14",
+  "venv": "site-packages",
+  "pythonVersion": "3.14",
+  "pythonPlatform": "Darwin",
+  "typeCheckingMode": "basic",
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": false,
+  "reportOptionalSubscript": "warning",
+  "reportArgumentType": "none",
+  "reportGeneralTypeIssues": "warning",
+  "reportCallIssue": "warning",
+}
