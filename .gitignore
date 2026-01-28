@@ -1,33 +1,59 @@
-# OS files
+# Home Assistant test environment
+ha-test-config/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
 .DS_Store
 Thumbs.db
 
-# IDE
-.vscode/
-.idea/
+# Logs
+*.log
 
-# Node.js
-node_modules/
-npm-debug.log*
-coverage/
-
-# Server
+# Node (for existing server)
+server/node_modules/
 server/.epcal-config.json
-server/epcal-config.json
-config/
+server/npm-debug.log*
+server/*.js
+server/*.js.map
+!server/jest.config.js
 
 # Arduino/PlatformIO
 Arduino/epcal/.pio/
 Arduino/epcal/.vscode/
 
-# Build artifacts
-*.o
-*.a
-*.bin
+# Temporary files
+*.tmp
+*.bak
 
-# Preview images (can be regenerated)
-Arduino/epcal/setup_screen_preview.png
+# Python cache
+__pycache__/
+*.pyc
 
-# Environment files
-.env
-.env.local
+# Test outputs
+comparison_tests/
+ha-test-config/
+
+# Build outputs
+server/dist/
+server/coverage/

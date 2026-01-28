@@ -1,0 +1,51 @@
+# Example Home Assistant configuration for EPCAL testing
+# Copy this to ha-test-config/configuration.yaml after first startup
+
+# Basic configuration
+homeassistant:
+  name: EPCAL Test
+  latitude: 45.5017
+  longitude: -73.5673
+  elevation: 0
+  unit_system: metric
+  time_zone: America/Toronto
+
+# Enable debug logging for EPCAL
+logger:
+  default: info
+  logs:
+    custom_components.epcal: debug
+    homeassistant.components.camera: info
+    homeassistant.components.image: info
+
+# Optional: Enable demo calendars for testing
+# Uncomment to add fake calendar data
+# demo:
+#   platforms:
+#     - calendar
+
+# Optional: Enable file editor for easy config editing
+# (Install "File editor" add-on first)
+# file_editor:
+
+# Frontend
+frontend:
+  themes: !include_dir_merge_named themes
+
+# Enable configuration UI
+config:
+
+# Enable system health
+system_health:
+
+# Enable My Home Assistant
+my:
+
+# Text to speech
+tts:
+  - platform: google_translate
+
+# Enable automations
+automation: !include automations.yaml
+script: !include scripts.yaml
+scene: !include scenes.yaml

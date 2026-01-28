@@ -1,0 +1,354 @@
+{
+  "NOW": "2026-01-25T20:00:00",
+  "scenarios": {
+    "empty_calendar": {
+      "name": "Empty Calendar",
+      "description": "No events, no weather",
+      "events": [],
+      "weather": null
+    },
+    "single_event_tomorrow": {
+      "name": "Single Event Tomorrow",
+      "description": "One simple event tomorrow morning",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Team Meeting",
+          "start": "2026-01-26T09:00:00",
+          "end": "2026-01-26T10:30:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        }
+      ],
+      "weather": null
+    },
+    "multiple_events_tomorrow": {
+      "name": "Multiple Events Tomorrow",
+      "description": "Several events on Monday",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Team Meeting",
+          "start": "2026-01-26T09:00:00",
+          "end": "2026-01-26T10:30:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-2",
+          "title": "Client Presentation",
+          "start": "2026-01-26T14:00:00",
+          "end": "2026-01-26T15:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-3",
+          "title": "Dinner",
+          "start": "2026-01-26T18:30:00",
+          "end": "2026-01-26T20:00:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        }
+      ],
+      "weather": null
+    },
+    "all_day_events": {
+      "name": "All-Day Events",
+      "description": "All-day events across the week",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Holiday",
+          "start": "2026-01-27T00:00:00",
+          "end": "2026-01-27T00:00:00",
+          "allDay": true,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-2",
+          "title": "Conference",
+          "start": "2026-01-29T00:00:00",
+          "end": "2026-01-29T00:00:00",
+          "allDay": true,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        }
+      ],
+      "weather": null
+    },
+    "multi_day_event": {
+      "name": "Multi-Day Event",
+      "description": "Event spanning 3 days (Wed-Fri)",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Tech Conference",
+          "start": "2026-01-28T09:00:00",
+          "end": "2026-01-30T17:00:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        }
+      ],
+      "weather": null
+    },
+    "long_title_wrapping": {
+      "name": "Long Title Text Wrapping",
+      "description": "Event with very long title that needs wrapping",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Annual Strategic Planning and Budget Review Meeting with All Department Heads",
+          "start": "2026-01-26T10:00:00",
+          "end": "2026-01-26T12:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        }
+      ],
+      "weather": null
+    },
+    "overflow_events": {
+      "name": "Event Overflow",
+      "description": "Too many events - should show +X more indicator",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Morning Stand-up",
+          "start": "2026-01-26T09:00:00",
+          "end": "2026-01-26T09:30:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-2",
+          "title": "Design Review",
+          "start": "2026-01-26T10:00:00",
+          "end": "2026-01-26T11:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-3",
+          "title": "Lunch with Team",
+          "start": "2026-01-26T12:00:00",
+          "end": "2026-01-26T13:00:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-4",
+          "title": "Client Call",
+          "start": "2026-01-26T14:00:00",
+          "end": "2026-01-26T15:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-5",
+          "title": "Code Review",
+          "start": "2026-01-26T15:30:00",
+          "end": "2026-01-26T16:30:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-6",
+          "title": "Sprint Planning",
+          "start": "2026-01-26T16:30:00",
+          "end": "2026-01-26T18:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-7",
+          "title": "Dinner",
+          "start": "2026-01-26T19:00:00",
+          "end": "2026-01-26T20:30:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        }
+      ],
+      "weather": null
+    },
+    "weekend_event": {
+      "name": "Weekend Event",
+      "description": "Event on Saturday (should have red background)",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Birthday Party",
+          "start": "2026-01-31T15:00:00",
+          "end": "2026-01-31T18:00:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        }
+      ],
+      "weather": null
+    },
+    "waste_collection": {
+      "name": "Waste Collection Icons",
+      "description": "Waste collection on Tuesday and Friday",
+      "events": [
+        {
+          "id": "waste-1",
+          "title": "Garbage Collection",
+          "start": "2026-01-27T00:00:00",
+          "end": "2026-01-27T00:00:00",
+          "allDay": true,
+          "calendarIcon": "🗑️",
+          "calendarId": "calendar.waste_garbage"
+        },
+        {
+          "id": "waste-2",
+          "title": "Recycling Collection",
+          "start": "2026-01-30T00:00:00",
+          "end": "2026-01-30T00:00:00",
+          "allDay": true,
+          "calendarIcon": "♻️",
+          "calendarId": "calendar.waste_recycling"
+        }
+      ],
+      "weather": null,
+      "collectionCalendarIds": [
+        "calendar.waste_garbage",
+        "calendar.waste_recycling"
+      ]
+    },
+    "weather_forecast": {
+      "name": "Weather Forecast",
+      "description": "Weather icons and temperatures",
+      "events": [],
+      "weather": [
+        { "date": "2026-01-25T00:00:00", "condition": "sunny", "tempHigh": 22, "tempLow": 15 },
+        { "date": "2026-01-26T00:00:00", "condition": "partlycloudy", "tempHigh": 20, "tempLow": 14 },
+        { "date": "2026-01-27T00:00:00", "condition": "cloudy", "tempHigh": 18, "tempLow": 12 },
+        { "date": "2026-01-28T00:00:00", "condition": "rainy", "tempHigh": 16, "tempLow": 11 },
+        { "date": "2026-01-29T00:00:00", "condition": "rainy", "tempHigh": 15, "tempLow": 10 },
+        { "date": "2026-01-30T00:00:00", "condition": "cloudy", "tempHigh": 17, "tempLow": 11 },
+        { "date": "2026-01-31T00:00:00", "condition": "sunny", "tempHigh": 19, "tempLow": 13 }
+      ]
+    },
+    "upcoming_events": {
+      "name": "Upcoming Events Section",
+      "description": "Events beyond the 6-day view (next week)",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Board Meeting",
+          "start": "2026-02-02T00:00:00",
+          "end": "2026-02-02T00:00:00",
+          "allDay": true,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        }
+      ],
+      "weather": null
+    },
+    "full_calendar": {
+      "name": "Full Calendar - All Features",
+      "description": "Everything: events, multi-day, weather, waste, legend",
+      "events": [
+        {
+          "id": "event-1",
+          "title": "Team Meeting",
+          "start": "2026-01-26T09:00:00",
+          "end": "2026-01-26T10:30:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-2",
+          "title": "Client Presentation",
+          "start": "2026-01-26T14:00:00",
+          "end": "2026-01-26T15:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-3",
+          "title": "Holiday",
+          "start": "2026-01-27T00:00:00",
+          "end": "2026-01-27T00:00:00",
+          "allDay": true,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-4",
+          "title": "Tech Conference",
+          "start": "2026-01-28T09:00:00",
+          "end": "2026-01-30T17:00:00",
+          "allDay": false,
+          "calendarIcon": "●",
+          "calendarId": "calendar.personal"
+        },
+        {
+          "id": "event-5",
+          "title": "Sprint Planning",
+          "start": "2026-01-30T10:00:00",
+          "end": "2026-01-30T12:00:00",
+          "allDay": false,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "event-6",
+          "title": "Board Meeting",
+          "start": "2026-02-02T00:00:00",
+          "end": "2026-02-02T00:00:00",
+          "allDay": true,
+          "calendarIcon": "■",
+          "calendarId": "calendar.work"
+        },
+        {
+          "id": "waste-1",
+          "title": "Garbage Collection",
+          "start": "2026-01-27T00:00:00",
+          "end": "2026-01-27T00:00:00",
+          "allDay": true,
+          "calendarIcon": "🗑️",
+          "calendarId": "calendar.waste_garbage"
+        },
+        {
+          "id": "waste-2",
+          "title": "Recycling Collection",
+          "start": "2026-01-30T00:00:00",
+          "end": "2026-01-30T00:00:00",
+          "allDay": true,
+          "calendarIcon": "♻️",
+          "calendarId": "calendar.waste_recycling"
+        }
+      ],
+      "weather": [
+        { "date": "2026-01-25T00:00:00", "condition": "sunny", "tempHigh": 22, "tempLow": 15 },
+        { "date": "2026-01-26T00:00:00", "condition": "partlycloudy", "tempHigh": 20, "tempLow": 14 },
+        { "date": "2026-01-27T00:00:00", "condition": "cloudy", "tempHigh": 18, "tempLow": 12 },
+        { "date": "2026-01-28T00:00:00", "condition": "rainy", "tempHigh": 16, "tempLow": 11 },
+        { "date": "2026-01-29T00:00:00", "condition": "rainy", "tempHigh": 15, "tempLow": 10 },
+        { "date": "2026-01-30T00:00:00", "condition": "cloudy", "tempHigh": 17, "tempLow": 11 },
+        { "date": "2026-01-31T00:00:00", "condition": "sunny", "tempHigh": 19, "tempLow": 13 }
+      ],
+      "collectionCalendarIds": [
+        "calendar.waste_garbage",
+        "calendar.waste_recycling"
+      ]
+    }
+  }
+}

@@ -276,6 +276,22 @@ epcal/
 └── TODO.md              # Project roadmap
 ```
 
+## Development
+
+### Visual Regression Testing
+
+Run the complete test suite to compare TypeScript and Python renderer output:
+
+```bash
+python3 scripts/run_tests.py
+```
+
+See [TESTING.md](TESTING.md) for detailed testing documentation.
+
+### Border Alignment
+
+The Python renderer has been updated to match Canvas border behavior exactly. See [BORDER_FIX_RESULTS.md](BORDER_FIX_RESULTS.md) for technical details.
+
 ## Contributing
 
 Issues and merge requests welcome at https://gitlab.com/emilecantin/epcal
