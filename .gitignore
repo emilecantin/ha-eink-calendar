@@ -33,14 +33,18 @@ Thumbs.db
 # Node (for existing server)
 server/node_modules/
 server/.epcal-config.json
+server/epcal-config.json
 server/npm-debug.log*
 server/*.js
 server/*.js.map
 !server/jest.config.js
+server/__tests__/*.js
+server/icons_svg_cache/
 
 # Arduino/PlatformIO
 Arduino/epcal/.pio/
 Arduino/epcal/.vscode/
+Arduino/epcal/setup_screen_preview.png
 
 # Temporary files
 *.tmp
