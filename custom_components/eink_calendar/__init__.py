@@ -26,6 +26,23 @@ _LOGGER = logging.getLogger(__name__)
 PLATFORMS: list[Platform] = [Platform.CAMERA, Platform.IMAGE, Platform.SENSOR]
 
 
+def ensure_http_views(hass: HomeAssistant) -> None:
+    """Register HTTP views if not already done."""
+    hass.data.setdefault(DOMAIN, {})
+    if "http_views_registered" not in hass.data[DOMAIN]:
+        setup_http_views(hass)
+        hass.data[DOMAIN]["http_views_registered"] = True
+        _LOGGER.debug("HTTP views registered")
+
+
+async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+    """Set up the E-Ink Calendar integration (called before config entries)."""
+    # Register HTTP views early so the announce endpoint is available
+    # before any device is configured
+    ensure_http_views(hass)
+    return True
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up E-Ink Calendar from a config entry."""
     hass.data.setdefault(DOMAIN, {})
@@ -59,10 +76,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    # Register HTTP API views (only once for all entries)
-    if "http_views_registered" not in hass.data[DOMAIN]:
-        setup_http_views(hass)
-        hass.data[DOMAIN]["http_views_registered"] = True
+    # Ensure HTTP views are registered (fallback if async_setup wasn't called)
+    ensure_http_views(hass)
 
     # Register services
     await async_setup_services(hass, entry)
