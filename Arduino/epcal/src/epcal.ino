@@ -10,9 +10,13 @@
 
 #include <WiFiManager.h>
 #include <time.h>
+#include <esp_task_wdt.h>
 #include "config.h"
 #include "http_client.h"
 #include "display.h"
+
+// Watchdog timeout in seconds - if the ESP32 hangs longer than this, it reboots
+#define WDT_TIMEOUT 120
 
 // Waveshare display version (1 or 2, depending on hardware revision)
 int Version = 1;
@@ -52,6 +56,15 @@ void setup() {
   Serial.begin(115200);
   delay(100);
 
+  // Reconfigure the existing watchdog timer (Arduino framework already inits it)
+  esp_task_wdt_config_t wdt_config = {
+    .timeout_ms = WDT_TIMEOUT * 1000,
+    .idle_core_mask = 0,
+    .trigger_panic = true
+  };
+  esp_task_wdt_reconfigure(&wdt_config);
+  esp_task_wdt_add(NULL);
+
   bootCount++;
   Serial.printf("\n\n=== EPCAL Boot #%d ===\n", bootCount);
 
@@ -89,7 +102,8 @@ void setup() {
   wm.setShowInfoUpdate(false);           // Hide update button (not needed)
   wm.setShowInfoErase(true);             // Show erase button for factory reset
   wm.setConfigPortalBlocking(true);      // Block until configured
-  wm.setConnectRetries(3);               // Retry connection 3 times
+  wm.setConnectRetries(5);               // Retry connection 5 times
+  wm.setConnectTimeout(10);              // 10 second timeout per attempt
 
   // Set static IP for AP mode - helps with captive portal detection
   IPAddress apIP(192, 168, 4, 1);
@@ -120,6 +134,9 @@ void setup() {
   const char* apName = "EPCAL-Setup";
   const char* configUrl = "http://192.168.4.1";
 
+  // Suspend watchdog during WiFi connect (can block for minutes)
+  esp_task_wdt_delete(NULL);
+
   // Try to connect, or start config portal
   bool connected = false;
   if (forceSetup) {
@@ -129,7 +146,19 @@ void setup() {
   } else if (hasConfig || wm.getWiFiIsSaved()) {
     // We have saved WiFi, try to auto-connect
     Serial.println("Attempting WiFi connection...");
+    wm.setEnableConfigPortal(false);  // Don't auto-start portal on failure
     connected = wm.autoConnect(apName);
+    if (!connected) {
+      // WiFi failed - show setup screen and start portal for reconfiguration
+      Serial.println("WiFi connection failed, starting setup portal...");
+      display_show_setup_screen(apName, configUrl);
+      connected = wm.startConfigPortal(apName);
+      if (connected) {
+        // Clear ETag so we force a display refresh after reconfiguration
+        cache_clear();
+        Serial.println("Cache cleared after WiFi reconfiguration");
+      }
+    }
   } else {
     // No config, show QR codes on display and start portal
     Serial.println("No config found, starting setup portal...");
@@ -137,12 +166,16 @@ void setup() {
     connected = wm.startConfigPortal(apName);
   }
 
+  // Re-enable watchdog now that WiFi is done
+  esp_task_wdt_add(NULL);
+
   if (!connected) {
     Serial.println("WiFi connection failed!");
     handleConnectionFailure();
     return;
   }
 
+  esp_task_wdt_reset();
   Serial.println("WiFi connected!");
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
@@ -234,8 +267,8 @@ void saveParamsCallback() {
  * Handle WiFi connection failure
  */
 void handleConnectionFailure() {
-  display_init();
   display_show_error("WiFi connection failed");
+  display_sleep();
 
   // Sleep for 5 minutes and retry
   enterDeepSleep(300);
@@ -260,9 +293,14 @@ void updateCalendar() {
 
   if (checkResponse.result == FETCH_ERROR) {
     Serial.printf("Check failed with HTTP %d\n", checkResponse.http_code);
-    // Keep existing display, will retry next cycle
+    char errMsg[64];
+    snprintf(errMsg, sizeof(errMsg), "Server error (HTTP %d)", checkResponse.http_code);
+    display_show_error(errMsg);
+    display_sleep();
     return;
   }
+
+  esp_task_wdt_reset();  // Pet watchdog after successful check
 
   // Calendar has changed, download all chunks
   Serial.println("Calendar changed, downloading...");
@@ -271,6 +309,8 @@ void updateCalendar() {
   chunk_buffer = (uint8_t*)malloc(CHUNK_BUFFER_SIZE);
   if (!chunk_buffer) {
     Serial.println("Failed to allocate chunk buffer!");
+    display_show_error("Memory allocation failed");
+    display_sleep();
     return;
   }
 
@@ -278,6 +318,7 @@ void updateCalendar() {
   display_init();
 
   bool success = true;
+  const char* failedEndpoint = NULL;
 
   // Download and send black layer chunk 1
   if (success) {
@@ -290,8 +331,11 @@ void updateCalendar() {
       }
     } else {
       success = false;
+      failedEndpoint = ENDPOINT_BLACK1;
     }
   }
+
+  esp_task_wdt_reset();  // Pet watchdog between downloads
 
   // Download and send black layer chunk 2
   if (success) {
@@ -300,8 +344,11 @@ void updateCalendar() {
       display_send_black2(chunk_buffer);
     } else {
       success = false;
+      failedEndpoint = ENDPOINT_BLACK2;
     }
   }
+
+  esp_task_wdt_reset();
 
   // Download and send red layer chunk 1
   if (success) {
@@ -310,8 +357,11 @@ void updateCalendar() {
       display_send_red1(chunk_buffer);
     } else {
       success = false;
+      failedEndpoint = ENDPOINT_RED1;
     }
   }
+
+  esp_task_wdt_reset();
 
   // Download and send red layer chunk 2
   if (success) {
@@ -320,6 +370,7 @@ void updateCalendar() {
       display_send_red2(chunk_buffer);
     } else {
       success = false;
+      failedEndpoint = ENDPOINT_RED2;
     }
   }
 
@@ -339,7 +390,10 @@ void updateCalendar() {
 
     Serial.println("Display updated successfully!");
   } else {
-    Serial.println("Download failed, keeping previous display");
+    Serial.printf("Download failed for %s\n", failedEndpoint);
+    char errMsg[64];
+    snprintf(errMsg, sizeof(errMsg), "Download failed: %s", failedEndpoint);
+    display_show_error(errMsg);
   }
 
   // Put display to sleep
@@ -352,6 +406,9 @@ void updateCalendar() {
 void enterDeepSleep(uint32_t seconds) {
   Serial.printf("Entering deep sleep for %d seconds...\n", seconds);
   Serial.flush();
+
+  // Disable watchdog before sleep
+  esp_task_wdt_delete(NULL);
 
   esp_sleep_enable_timer_wakeup(seconds * uS_TO_S_FACTOR);
   esp_deep_sleep_start();

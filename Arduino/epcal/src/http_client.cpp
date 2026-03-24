@@ -4,6 +4,8 @@
 
 // Timeout for HTTP operations (ms)
 #define HTTP_TIMEOUT 15000
+// Timeout for download stalls - if no new data received for this long, abort (ms)
+#define DOWNLOAD_STALL_TIMEOUT 10000
 
 FetchResponse http_check_calendar(const char* base_url, const char* current_etag) {
   FetchResponse response;
@@ -121,6 +123,7 @@ FetchResponse http_fetch_chunk(
   // Read content into buffer
   WiFiClient* stream = http.getStreamPtr();
   size_t bytesRead = 0;
+  unsigned long lastDataTime = millis();
 
   while (http.connected() && bytesRead < (size_t)contentLength) {
     size_t available = stream->available();
@@ -128,6 +131,10 @@ FetchResponse http_fetch_chunk(
       size_t toRead = min(available, (size_t)contentLength - bytesRead);
       size_t read = stream->readBytes(buffer + bytesRead, toRead);
       bytesRead += read;
+      lastDataTime = millis();  // Reset stall timer
+    } else if (millis() - lastDataTime > DOWNLOAD_STALL_TIMEOUT) {
+      Serial.printf("Download stalled for %s after %zu / %d bytes\n", endpoint, bytesRead, contentLength);
+      break;
     }
     yield();  // Allow background tasks
   }

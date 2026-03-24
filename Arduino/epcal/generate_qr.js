@@ -31,21 +31,13 @@ async function generateSetupScreen() {
   ctx.fillStyle = 'white';
   ctx.fillRect(0, 0, CHUNK_WIDTH, CHUNK_HEIGHT);
 
-  // Draw title
-  ctx.fillStyle = 'black';
-  ctx.font = 'bold 36px sans-serif';
-  ctx.fillText('CONFIGURATION EPCAL', 50, 50);
-
-  ctx.font = '24px sans-serif';
-  ctx.fillText('Scannez les codes QR pour configurer', 50, 90);
-
-  // Generate QR codes
+  // Generate QR codes (text labels are drawn at runtime by Paint library)
   const wifiText = `WIFI:T:nopass;S:${WIFI_SSID};;`;
 
-  // QR code positions - centered better
+  // QR code positions
   const qr1X = 150;
   const qr2X = 700;
-  const qrY = 130;
+  const qrY = 150;
   const qrSize = 220;
 
   // Draw WiFi QR code
@@ -63,21 +55,12 @@ async function generateSetupScreen() {
   });
 
   // Load and draw QR images
+  ctx.fillStyle = 'black';
   const wifiQRImage = await loadImage(wifiQRDataUrl);
   ctx.drawImage(wifiQRImage, qr1X, qrY, qrSize, qrSize);
 
   const urlQRImage = await loadImage(urlQRDataUrl);
   ctx.drawImage(urlQRImage, qr2X, qrY, qrSize, qrSize);
-
-  // Labels under QR codes
-  ctx.font = 'bold 28px sans-serif';
-  const labelY = qrY + qrSize + 35;
-  ctx.fillText('1. WiFi', qr1X + 60, labelY);
-  ctx.fillText('2. Configuration', qr2X + 20, labelY);
-
-  ctx.font = '22px sans-serif';
-  ctx.fillText(WIFI_SSID, qr1X + 40, labelY + 35);
-  ctx.fillText(CONFIG_URL, qr2X, labelY + 35);
 
   // Convert to 1-bit bitmap
   // E-paper format: 1 = white, 0 = black, MSB first

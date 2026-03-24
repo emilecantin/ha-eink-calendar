@@ -45,7 +45,8 @@ void display_show_message(const char* line1, const char* line2) {
     return;
   }
 
-  // Initialize display
+  // Initialize display (must call DEV_ModuleInit before EPD init)
+  DEV_ModuleInit();
   EPD_12in48B_Init();
 
   // Create image buffer
@@ -83,7 +84,8 @@ void display_show_error(const char* message) {
     return;
   }
 
-  // Initialize display
+  // Initialize display (must call DEV_ModuleInit before EPD init)
+  DEV_ModuleInit();
   EPD_12in48B_Init();
 
   // Create image buffer
@@ -123,12 +125,24 @@ void display_show_setup_screen(const char* ssid, const char* url) {
   DEV_ModuleInit();
   EPD_12in48B_Init();
 
-  // === BLACK LAYER - TOP HALF (pre-rendered with QR codes) ===
+  // === BLACK LAYER - TOP HALF (pre-rendered QR codes + runtime text) ===
   memcpy_P(image, setup_screen_bitmap, SETUP_SCREEN_BYTES);
+  // Overlay text on the pre-rendered QR code bitmap
+  // Paint_NewImage sets up drawing context without clearing
+  Paint_NewImage(image, CHUNK_WIDTH, CHUNK_HEIGHT, 0, WHITE);
+
+  Paint_DrawString_EN(50, 30, "CONFIGURATION EPCAL", &Font24, WHITE, BLACK);
+  Paint_DrawString_EN(50, 70, "Scannez les codes QR pour configurer", &Font20, WHITE, BLACK);
+
+  // Labels under QR codes (QR codes are at y=150, height=220, so labels at ~y=385)
+  Paint_DrawString_EN(150, 385, "1. WiFi", &Font20, WHITE, BLACK);
+  Paint_DrawString_EN(150, 415, "EPCAL-Setup", &Font16, WHITE, BLACK);
+  Paint_DrawString_EN(700, 385, "2. Configuration", &Font20, WHITE, BLACK);
+  Paint_DrawString_EN(700, 415, "http://192.168.4.1", &Font16, WHITE, BLACK);
+
   EPD_12in48B_SendBlack1(image);
 
   // === BLACK LAYER - BOTTOM HALF ===
-  Paint_NewImage(image, CHUNK_WIDTH, CHUNK_HEIGHT, 0, WHITE);
   Paint_Clear(WHITE);
 
   Paint_DrawString_EN(50, 50, "3. Entrez vos informations:", &Font20, WHITE, BLACK);
