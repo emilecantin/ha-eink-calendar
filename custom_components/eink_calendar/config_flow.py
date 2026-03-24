@@ -161,6 +161,7 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
 
         return self.async_show_form(
             step_id="configure",
+            description_placeholders={"name": default_name},
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_DEVICE_NAME, default=default_name): str,

@@ -8,19 +8,22 @@ from PIL import Image
 def image_to_1bit(img: Image.Image, is_red_layer: bool = False) -> bytes:
     """Convert PIL Image to 1-bit packed bitmap for e-paper.
 
+    E-paper format: 0 = colored (black/red), 1 = white/transparent.
+    Bitmap starts as all 0xFF (white), colored pixels clear bits to 0.
+
     Args:
         img: PIL Image in RGB mode
-        is_red_layer: If True, converts red pixels to 1, otherwise black pixels to 1
+        is_red_layer: If True, extract red pixels, otherwise black pixels
 
     Returns:
-        Packed 1-bit bitmap (1 = black/red, 0 = white)
+        Packed 1-bit bitmap (0 = colored, 1 = white)
     """
     width, height = img.size
     pixels = img.load()
 
     # Calculate packed size (8 pixels per byte, MSB first)
     bytes_per_row = (width + 7) // 8
-    bitmap = bytearray(bytes_per_row * height)
+    bitmap = bytearray(b'\xff' * (bytes_per_row * height))
 
     for y in range(height):
         for x in range(width):
@@ -29,18 +32,19 @@ def image_to_1bit(img: Image.Image, is_red_layer: bool = False) -> bytes:
                 continue
             r, g, b = int(pixel_raw[0]), int(pixel_raw[1]), int(pixel_raw[2])
 
-            # Determine if pixel should be set
-            if is_red_layer:
-                # Red layer: set if pixel is red-ish
-                is_set = r > 200 and g < 100 and b < 100
-            else:
-                # Black layer: set if pixel is dark
-                is_set = r < 128 and g < 128 and b < 128
+            is_red_color = r > 150 and g < 100 and b < 100
 
-            if is_set:
+            if is_red_layer:
+                is_colored = is_red_color
+            else:
+                # Black layer: dark pixels that aren't red
+                brightness = (r + g + b) / 3
+                is_colored = brightness < 170 and not is_red_color
+
+            if is_colored:
                 byte_index = y * bytes_per_row + x // 8
                 bit_index = 7 - (x % 8)  # MSB first
-                bitmap[byte_index] |= 1 << bit_index
+                bitmap[byte_index] &= ~(1 << bit_index)
 
     return bytes(bitmap)
 

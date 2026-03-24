@@ -243,6 +243,18 @@ void setup() {
   Serial.println("WiFi connected!");
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
+  // Start mDNS and advertise our service so HA's zeroconf can discover us
+  String hostname = "eink-cal-" + getDeviceMac().substring(getDeviceMac().length() - 5);
+  if (MDNS.begin(hostname.c_str())) {
+    String mac = getDeviceMac();
+    MDNS.addService("eink-calendar", "tcp", 80);
+    MDNS.addServiceTxt("eink-calendar", "tcp", "mac", mac.c_str());
+    MDNS.addServiceTxt("eink-calendar", "tcp", "fw", FIRMWARE_VERSION);
+    Serial.println("mDNS started, advertising _eink-calendar._tcp");
+  } else {
+    Serial.println("mDNS failed to start");
+  }
+
   // Step 1: Discover HA and announce (or use saved config)
   if (!config.discovered || !hasEndpoints) {
     if (!discoverAndAnnounce()) {
@@ -372,25 +384,12 @@ bool discoverAndAnnounce() {
     return tryAnnounce(config.ha_url);
   }
 
-  Serial.println("Starting mDNS discovery...");
-
-  String hostname = "eink-cal-" + getDeviceMac().substring(getDeviceMac().length() - 5);
-  if (!MDNS.begin(hostname.c_str())) {
-    Serial.println("mDNS failed to start");
-    return false;
-  }
-
-  // Advertise our service so HA's zeroconf can discover us
-  String mac = getDeviceMac();
-  MDNS.addService("eink-calendar", "tcp", 80);
-  MDNS.addServiceTxt("eink-calendar", "tcp", "mac", mac.c_str());
-  MDNS.addServiceTxt("eink-calendar", "tcp", "fw", FIRMWARE_VERSION);
-  Serial.println("mDNS service advertised: _eink-calendar._tcp");
+  Serial.println("Discovering Home Assistant via mDNS...");
 
   int n = MDNS.queryService("home-assistant", "tcp");
   if (n == 0) {
     Serial.println("No Home Assistant found via mDNS");
-    MDNS.end();
+
     return false;
   }
 
@@ -420,19 +419,19 @@ bool discoverAndAnnounce() {
     Serial.printf("Trying instance %d: %s\n", i + 1, url);
 
     if (tryAnnounce(url)) {
-      MDNS.end();
+  
       return true;
     }
 
     // If announce returned pending, we've already saved this URL and shown
     // the waiting message — stop trying others
     if (strlen(config.ha_url) > 0) {
-      MDNS.end();
+  
       return false;
     }
   }
 
-  MDNS.end();
+  // mDNS stays running so HA can discover us
   return false;
 }
 
