@@ -1,7 +1,7 @@
 #!/bin/bash
 # Script to download and convert MDI icons
 
-ICONS_DIR="../custom_components/epcal/renderer/icons"
+ICONS_DIR="../custom_components/eink_calendar/renderer/icons"
 SVG_DIR="./icons_svg_cache"
 
 mkdir -p "$ICONS_DIR"

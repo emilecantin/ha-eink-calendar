@@ -1,0 +1,48 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Configurer le Calendrier E-Ink",
+        "description": "Entrez un nom pour cet appareil de calendrier e-ink.",
+        "data": {
+          "device_name": "Nom de l'appareil"
+        }
+      },
+      "configure": {
+        "title": "Configurer {name}",
+        "description": "Configurez les calendriers et paramètres d'affichage pour cet appareil.",
+        "data": {
+          "device_name": "Nom de l'appareil",
+          "calendars": "Calendriers réguliers",
+          "waste_calendars": "Calendriers de collecte des déchets",
+          "layout": "Disposition de l'affichage",
+          "show_legend": "Afficher la légende du calendrier",
+          "weather_entity": "Entité météo (optionnel)",
+          "refresh_interval": "Intervalle de rafraîchissement (minutes)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Cet appareil est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configurer le Calendrier E-Ink",
+        "description": "Configurez les paramètres d'affichage de votre calendrier.",
+        "data": {
+          "calendars": "Calendriers réguliers",
+          "waste_calendars": "Calendriers de collecte des déchets",
+          "layout": "Disposition de l'affichage",
+          "show_legend": "Afficher la légende du calendrier",
+          "weather_entity": "Entité météo (optionnel)",
+          "refresh_interval": "Intervalle de rafraîchissement (minutes)",
+          "font_regular": "Chemin de police Regular personnalisée (optionnel)",
+          "font_medium": "Chemin de police Medium personnalisée (optionnel)",
+          "font_bold": "Chemin de police Bold personnalisée (optionnel)"
+        }
+      }
+    }
+  }
+}

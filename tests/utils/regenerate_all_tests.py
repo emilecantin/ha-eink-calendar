@@ -6,10 +6,10 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-# Add custom_components/epcal to path to make renderer importable as a package
+# Add custom_components/eink_calendar to path to make renderer importable as a package
 # This avoids importing the HA integration's __init__.py
 sys.path.insert(
-    0, str(Path(__file__).parent.parent.parent / "custom_components" / "epcal")
+    0, str(Path(__file__).parent.parent.parent / "custom_components" / "eink_calendar")
 )
 
 # Now we can import renderer as a relative package

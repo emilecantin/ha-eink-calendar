@@ -5,7 +5,7 @@ services:
     image: homeassistant/home-assistant:latest
     volumes:
       - ./ha-test-config:/config
-      - ./custom_components/epcal:/config/custom_components/epcal:ro
+      - ./custom_components/eink_calendar:/config/custom_components/eink_calendar:ro
       - /etc/localtime:/etc/localtime:ro
     restart: unless-stopped
     privileged: true

@@ -1,4 +1,4 @@
-# EPCAL Project - Claude Development Guide
+# E-Ink Calendar Project - Claude Development Guide
 
 ## Project Structure
 
@@ -6,28 +6,27 @@
 epcal/
 ├── Arduino/epcal/              # ESP32 firmware (PlatformIO)
 │   ├── src/
-│   │   ├── epcal.ino           # Main sketch with state machine
-│   │   ├── config.*            # NVS storage for WiFi/server config
+│   │   ├── epcal.ino           # Main sketch with mDNS + announce flow
+│   │   ├── config.*            # NVS storage for HA URL, entry ID, endpoints
 │   │   ├── display.*           # E-paper display driver
-│   │   ├── http_client.*       # HTTP client with ETag support
+│   │   ├── http_client.*       # HTTP client with announce + ETag support
 │   │   └── setup_screen.h      # Pre-rendered setup screen (generated)
 │   ├── generate_qr.js          # Generates setup_screen.h with QR codes
 │   └── platformio.ini          # Build config
-├── custom_components/epcal/    # Home Assistant custom component
+├── custom_components/eink_calendar/  # Home Assistant custom component
 │   ├── __init__.py             # Integration entry point
-│   ├── config_flow.py          # UI configuration wizard
+│   ├── config_flow.py          # Discovery + manual config flow
 │   ├── coordinator.py          # Data coordinator (calendar/weather)
 │   ├── camera.py               # Preview camera entity
 │   ├── image.py                # Bitmap image entities
 │   ├── sensor.py               # Last update sensor
-│   ├── http_views.py           # Device pairing API
-│   ├── services.py             # Device management services
+│   ├── http_views.py           # Announce API + bitmap serving
+│   ├── services.py             # trigger_render service
 │   └── renderer/               # Python calendar renderer
 └── server/                     # Node.js/Express server (reference impl)
     ├── index.ts                # Main server, endpoints, config UI
     ├── renderer.ts             # Canvas-based calendar rendering
-    ├── fonts/                  # Inter font files for e-paper
-    └── .epcal-config.json      # Runtime config (gitignored)
+    └── fonts/                  # Inter font files for e-paper
 ```
 
 ## Server Development
@@ -87,6 +86,50 @@ Add to `/calendar/preview`: `?debug=true`, `?debug=empty`, `?debug=no-today`, `?
 cd server && npx tsc --noEmit
 ```
 
+## HA Custom Component
+
+### Domain: `eink_calendar`
+
+### Device Discovery Flow
+
+1. ESP32 boots, connects to WiFi, discovers HA via mDNS
+2. ESP32 POSTs to `/api/eink_calendar/announce` with `{mac, name, firmware_version}`
+3. HA fires `config_entries.flow.async_init(DOMAIN, context={"source": "discovery"})`
+4. "Discovered" card appears in Settings → Integrations
+5. User configures calendars, weather, layout in the config flow
+6. ESP32 polls `/announce` and gets `{status: "configured", endpoints: {...}}`
+7. ESP32 fetches bitmaps from returned endpoints with `X-MAC` header auth
+
+### API Endpoints
+
+| Endpoint | Description |
+|----------|-------------|
+| `POST /api/eink_calendar/announce` | Device announce (no auth) |
+| `GET /api/eink_calendar/bitmap/{entry_id}/{layer}` | Bitmap serving (X-MAC auth) |
+| `GET /api/eink_calendar/bitmap/{entry_id}/check` | ETag check (X-MAC auth) |
+
+### Services
+
+| Service | Description |
+|---------|-------------|
+| `eink_calendar.trigger_render` | Force a manual re-render |
+
+### Testing
+
+```bash
+# Start HA test environment
+docker-compose up
+
+# Test announce
+curl -X POST http://localhost:8123/api/eink_calendar/announce \
+  -H "Content-Type: application/json" \
+  -d '{"mac":"AA:BB:CC:DD:EE:FF","name":"Kitchen Calendar","firmware_version":"1.0.0"}'
+
+# Test bitmap (after configuring)
+curl http://localhost:8123/api/eink_calendar/bitmap/{entry_id}/black_top \
+  -H "X-MAC: AA:BB:CC:DD:EE:FF"
+```
+
 ## ESP32 Firmware
 
 ### Building and uploading
@@ -109,6 +152,15 @@ Run from server directory to use existing canvas/qrcode dependencies:
 ```bash
 cd server && node ../Arduino/epcal/generate_qr.js
 ```
+
+### Firmware Flow
+
+1. WiFi connect (WiFiManager with "EinkCal-Setup" AP)
+2. mDNS discovery for `_home-assistant._tcp`
+3. POST `/api/eink_calendar/announce` with MAC/name/firmware
+4. If "pending" → show "Waiting for HA" on display, sleep 30s, retry
+5. If "configured" → store entry_id + endpoints, fetch bitmaps
+6. Display bitmaps, deep sleep for refresh_interval
 
 ## Display Specifications
 
@@ -151,18 +203,20 @@ Hold BOOT button (GPIO0) for 2 seconds during startup to enter config mode. Disp
 
 ## Architecture Decisions
 
-1. **Server-side rendering**: Server renders full bitmap, ESP32 just displays
+1. **Server-side rendering**: HA renders full bitmap, ESP32 just displays
 2. **ETag caching**: Skip download on 304 Not Modified (saves battery)
 3. **No partial refresh**: Tri-color display doesn't support it
-4. **15-30 minute refresh**: Configurable, balances freshness vs battery
-5. **Pre-rendered setup screen**: Avoids runtime QR generation on ESP32
-6. **Inter font**: Optimized for e-paper readability
+4. **Native device discovery**: ESP32 announces via mDNS, appears as HA discovered device
+5. **Per-device config entries**: Each ESP32 gets its own config entry with MAC as unique ID
+6. **MAC-based auth**: Bitmap endpoints verify X-MAC header matches config entry
+7. **Pre-rendered setup screen**: Avoids runtime QR generation on ESP32
+8. **Inter font**: Optimized for e-paper readability
 
 ## Development Guidelines
 
 ### Home Assistant Integration
 
-The primary deployment target is the **custom component** (`custom_components/epcal/`). The old Node.js add-on has been removed.
+The primary deployment target is the **custom component** (`custom_components/eink_calendar/`). The old Node.js add-on has been removed.
 
 - Test with: `docker-compose up` (starts HA with the component mounted)
 - The custom component has its own Python renderer (no Node.js dependency)

@@ -1,5 +1,5 @@
-#ifndef EPCAL_DISPLAY_H
-#define EPCAL_DISPLAY_H
+#ifndef EINK_CALENDAR_DISPLAY_H
+#define EINK_CALENDAR_DISPLAY_H
 
 #include <Arduino.h>
 
@@ -83,4 +83,4 @@ void display_show_error(const char* message);
  */
 void display_show_setup_screen(const char* ssid, const char* url);
 
-#endif // EPCAL_DISPLAY_H
+#endif // EINK_CALENDAR_DISPLAY_H

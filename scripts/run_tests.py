@@ -26,7 +26,7 @@ def run_command(cmd, description):
 
 
 def main():
-    print("EPCAL Visual Regression Test Suite")
+    print("E-Ink Calendar Visual Regression Test Suite")
     print("=" * 70)
 
     # Step 1: Generate TypeScript reference renders

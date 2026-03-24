@@ -1,6 +1,6 @@
 {
   "include": [
-    "custom_components/epcal",
+    "custom_components/eink_calendar",
     "analyze_diffs.py",
     "analyze_diffs_simple.py",
     "run_tests.py",

@@ -1,1 +1,1 @@
-"""EPCAL test utilities and test suite."""
+"""E-Ink Calendar test utilities and test suite."""

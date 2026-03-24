@@ -1,11 +1,11 @@
-# EPCAL Project Structure
+# E-Ink Calendar Project Structure
 
 ## Overview
 
 ```
 epcal/
 ├── scripts/                    # Developer utility scripts
-├── server/                     # Node.js rendering server
+├── server/                     # Node.js rendering server (reference impl)
 ├── Arduino/                    # ESP32 firmware
 ├── custom_components/          # Home Assistant integration
 ├── tests/                      # Python test suite
@@ -27,7 +27,7 @@ Utility scripts for testing and analysis.
 
 See [scripts/README.md](scripts/README.md) for usage.
 
-### `/server/` - Rendering Server
+### `/server/` - Rendering Server (Reference Implementation)
 
 Node.js/TypeScript server that renders calendar bitmaps for the e-paper display.
 
@@ -49,20 +49,26 @@ Node.js/TypeScript server that renders calendar bitmaps for the e-paper display.
 PlatformIO project for the ESP32 microcontroller.
 
 **Key files**:
-- `src/epcal.ino` - Main sketch with state machine
-- `src/config.*` - NVS storage for WiFi/server config
+- `src/epcal.ino` - Main sketch with mDNS discovery + announce flow
+- `src/config.*` - NVS storage for HA URL, entry ID, endpoints
 - `src/display.*` - E-paper display driver
+- `src/http_client.*` - HTTP client with announce + bitmap fetch + ETag
 - `generate_qr.js` - Generates setup screen with QR codes
 
-### `/custom_components/epcal/` - Home Assistant Integration
+### `/custom_components/eink_calendar/` - Home Assistant Integration
 
-Python custom component that integrates EPCAL as a Home Assistant service.
+Python custom component for Home Assistant with native device discovery.
 
 **Structure**:
 - `renderer/` - Pure Python renderer (matches TypeScript output)
 - `tests/` - Integration and unit tests
 - `__init__.py` - HA integration setup
-- `config_flow.py` - Configuration UI
+- `config_flow.py` - Discovery + manual config flow
+- `http_views.py` - Announce API + bitmap serving endpoints
+- `coordinator.py` - Calendar/weather data coordinator
+- `camera.py` - Preview camera entity
+- `image.py` - Bitmap layer image entities
+- `sensor.py` - Last update sensor
 
 ### `/tests/` - Test Suite
 
@@ -81,26 +87,13 @@ See [tests/README.md](tests/README.md) for details.
 
 Technical documentation and guides.
 
-- `TESTING.md` - Visual regression testing guide
-- `BORDER_FIX_RESULTS.md` - Border alignment technical details
-- `screenshots/` - UI screenshots
-- `archive/` - Historical documentation
-
 ### `/comparison_tests/` - Test Results
 
 Generated output from visual regression tests comparing TypeScript and Python renderers.
 
-Contains:
-- `*_typescript.png` - TypeScript renderer output
-- `*_python.png` - Python renderer output
-- `*_diff.png` - Pixel difference visualization
-- `comparison_report.html` - Interactive comparison report
-
 ### `/ha-test-config/` - Test Environment
 
 Home Assistant configuration for testing the integration.
-
-**Note**: `test_data_library.py` is a symlink to `tests/fixtures/test_data_library.py`
 
 ## Root Files
 
@@ -108,6 +101,7 @@ Home Assistant configuration for testing the integration.
 - `README.md` - Main project documentation
 - `docker-compose.yml` - Home Assistant test environment
 - `pyrightconfig.json` - Python type checking configuration
+- `hacs.json` - HACS integration metadata
 
 ## Build Artifacts (gitignored)
 

@@ -1,0 +1,54 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Set up E-Ink Calendar",
+        "description": "Enter a name for this E-Ink Calendar device.",
+        "data": {
+          "device_name": "Device Name"
+        }
+      },
+      "configure": {
+        "title": "Configure {name}",
+        "description": "Configure calendars and display settings for this device.",
+        "data": {
+          "device_name": "Device Name",
+          "calendars": "Regular Calendars",
+          "waste_calendars": "Waste Collection Calendars",
+          "layout": "Display Layout",
+          "show_legend": "Show Calendar Legend",
+          "weather_entity": "Weather Entity (optional)",
+          "refresh_interval": "Refresh Interval (minutes)"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "This device is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Configure E-Ink Calendar",
+        "description": "Configure your calendar display settings.",
+        "data": {
+          "calendars": "Regular Calendars",
+          "waste_calendars": "Waste Collection Calendars",
+          "layout": "Display Layout",
+          "show_legend": "Show Calendar Legend",
+          "weather_entity": "Weather Entity (optional)",
+          "refresh_interval": "Refresh Interval (minutes)",
+          "font_regular": "Custom Regular Font Path (optional)",
+          "font_medium": "Custom Medium Font Path (optional)",
+          "font_bold": "Custom Bold Font Path (optional)"
+        }
+      }
+    }
+  },
+  "services": {
+    "trigger_render": {
+      "name": "Trigger Render",
+      "description": "Force a manual re-render of the calendar display."
+    }
+  }
+}

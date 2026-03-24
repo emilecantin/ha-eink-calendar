@@ -1,20 +1,20 @@
-# Example Home Assistant configuration for EPCAL testing
+# Example Home Assistant configuration for E-Ink Calendar testing
 # Copy this to ha-test-config/configuration.yaml after first startup
 
 # Basic configuration
 homeassistant:
-  name: EPCAL Test
+  name: E-Ink Calendar Test
   latitude: 45.5017
   longitude: -73.5673
   elevation: 0
   unit_system: metric
   time_zone: America/Toronto
 
-# Enable debug logging for EPCAL
+# Enable debug logging for E-Ink Calendar
 logger:
   default: info
   logs:
-    custom_components.epcal: debug
+    custom_components.eink_calendar: debug
     homeassistant.components.camera: info
     homeassistant.components.image: info
 

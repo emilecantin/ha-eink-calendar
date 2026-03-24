@@ -34,6 +34,8 @@ Thumbs.db
 server/node_modules/
 server/.epcal-config.json
 server/epcal-config.json
+server/.eink-calendar-config.json
+server/eink-calendar-config.json
 server/npm-debug.log*
 server/*.js
 server/*.js.map

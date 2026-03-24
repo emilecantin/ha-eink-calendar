@@ -1,7 +1,8 @@
-#ifndef EPCAL_HTTP_CLIENT_H
-#define EPCAL_HTTP_CLIENT_H
+#ifndef EINK_CALENDAR_HTTP_CLIENT_H
+#define EINK_CALENDAR_HTTP_CLIENT_H
 
 #include <Arduino.h>
+#include "config.h"
 
 // Result of a fetch operation
 enum FetchResult {
@@ -18,39 +19,64 @@ struct FetchResponse {
   size_t bytes_read;   // Number of bytes downloaded
 };
 
-// Chunk endpoints
-#define ENDPOINT_BLACK1 "/calendar/black1"
-#define ENDPOINT_BLACK2 "/calendar/black2"
-#define ENDPOINT_RED1   "/calendar/red1"
-#define ENDPOINT_RED2   "/calendar/red2"
-#define ENDPOINT_CHECK  "/calendar/check"
+// Announce status
+enum AnnounceStatus {
+  ANNOUNCE_CONFIGURED,  // Device is configured, endpoints returned
+  ANNOUNCE_PENDING,     // Waiting for user to configure in HA
+  ANNOUNCE_ERROR        // Error communicating with HA
+};
+
+// Response from announce
+struct AnnounceResponse {
+  AnnounceStatus status;
+  char entry_id[64];
+  uint32_t refresh_interval;  // in minutes
+  BitmapEndpoints endpoints;
+  int http_code;
+};
+
+/**
+ * Announce this device to Home Assistant
+ *
+ * @param ha_url       Home Assistant base URL (e.g., "http://192.168.1.50:8123")
+ * @param mac          Device MAC address
+ * @param name         Device display name
+ * @param fw_version   Firmware version string
+ * @return             AnnounceResponse with status and endpoints if configured
+ */
+AnnounceResponse http_announce(const char* ha_url, const char* mac,
+                               const char* name, const char* fw_version);
 
 /**
  * Check if calendar has changed using ETag
  *
- * @param base_url      Server base URL (e.g., "http://192.168.1.50:4000")
- * @param current_etag  Current stored ETag (empty string if none)
- * @param new_etag      Buffer to store new ETag if changed (33 bytes)
- * @return              FETCH_OK if changed, FETCH_NOT_MODIFIED if same, FETCH_ERROR on failure
+ * @param ha_url       Home Assistant base URL
+ * @param check_path   Check endpoint path (from announce response)
+ * @param current_etag Current stored ETag (empty string if none)
+ * @param mac          Device MAC address (for X-MAC header)
+ * @return             FETCH_OK if changed, FETCH_NOT_MODIFIED if same, FETCH_ERROR on failure
  */
-FetchResponse http_check_calendar(const char* base_url, const char* current_etag);
+FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
+                                  const char* current_etag, const char* mac);
 
 /**
  * Fetch a bitmap chunk from the server
  *
- * @param base_url      Server base URL
- * @param endpoint      Endpoint path (e.g., ENDPOINT_BLACK1)
- * @param current_etag  Current stored ETag (send as If-None-Match)
- * @param buffer        Buffer to store downloaded data
- * @param buffer_size   Size of buffer
- * @return              FetchResponse with result and new ETag if applicable
+ * @param ha_url       Home Assistant base URL
+ * @param endpoint     Endpoint path (from announce response)
+ * @param current_etag Current stored ETag (send as If-None-Match)
+ * @param mac          Device MAC address (for X-MAC header)
+ * @param buffer       Buffer to store downloaded data
+ * @param buffer_size  Size of buffer
+ * @return             FetchResponse with result and new ETag if applicable
  */
 FetchResponse http_fetch_chunk(
-  const char* base_url,
+  const char* ha_url,
   const char* endpoint,
   const char* current_etag,
+  const char* mac,
   uint8_t* buffer,
   size_t buffer_size
 );
 
-#endif // EPCAL_HTTP_CLIENT_H
+#endif // EINK_CALENDAR_HTTP_CLIENT_H

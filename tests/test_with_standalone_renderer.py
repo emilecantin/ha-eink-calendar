@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Test script using EPCAL renderer."""
+"""Test script using E-Ink Calendar renderer."""
 
 import sys
 from pathlib import Path
 
-# Add custom_components/epcal to path to make renderer importable as a package
+# Add custom_components/eink_calendar to path to make renderer importable as a package
 # This avoids importing the HA integration's __init__.py
-sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "epcal"))
+sys.path.insert(0, str(Path(__file__).parent.parent / "custom_components" / "eink_calendar"))
 
 # Now we can import renderer as a relative package
 from renderer.renderer import render_to_png
@@ -14,7 +14,7 @@ from test_data_library import NOW, TEST_SCENARIOS
 
 
 def test_render():
-    print("Testing EPCAL Renderer")
+    print("Testing E-Ink Calendar Renderer")
     print("=" * 70)
 
     scenario = TEST_SCENARIOS["single_event_tomorrow"]

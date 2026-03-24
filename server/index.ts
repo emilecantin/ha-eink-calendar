@@ -169,7 +169,7 @@ function buildLegend(calendarIds: string[]): LegendItem[] {
 
 // French translations
 const i18n = {
-  title: "EPCAL",
+  title: "E-Ink Calendar",
   subtitle: "Calendrier E-Paper",
   statusConnected: "Connecté à Home Assistant",
   statusNotConnected: "Non connecté à Home Assistant",
@@ -1562,7 +1562,7 @@ app.get("/events", async (_req, res) => {
 });
 
 app.listen(port, () => {
-  console.log(`EPCAL server listening on port ${port}`);
+  console.log(`E-Ink Calendar server listening on port ${port}`);
   if (config) {
     console.log(`Home Assistant configured: ${config.haUrl}`);
   } else {
@@ -1599,9 +1599,9 @@ app.listen(port, () => {
     reuseAddr: true,
     loopback: true,
   });
-  const serviceName = "EPCAL Calendar Server";
-  const serviceType = "_epcal._tcp.local";
-  const hostname = "epcal-server.local";
+  const serviceName = "E-Ink Calendar Server";
+  const serviceType = "_eink-calendar._tcp.local";
+  const hostname = "eink-calendar-server.local";
 
   mdnsResponder.on("query", (query: any) => {
     // Check if the query is for our service
@@ -1712,7 +1712,7 @@ app.listen(port, () => {
   announceService();
   setInterval(announceService, 30000);
 
-  console.log(`mDNS: Advertising _epcal._tcp service on port ${port}`);
+  console.log(`mDNS: Advertising _eink-calendar._tcp service on port ${port}`);
   console.log(`mDNS: Available on IPs: ${privateIPs.join(", ")}`);
 });
 
@@ -2322,7 +2322,7 @@ app.get("/debug", (req, res) => {
     <!DOCTYPE html>
     <html>
     <head>
-      <title>EPCAL Debug Previews</title>
+      <title>E-Ink Calendar Debug Previews</title>
       <style>
         body {
           font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;

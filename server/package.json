@@ -1,5 +1,5 @@
 {
-  "name": "epcal-server",
+  "name": "eink-calendar-server",
   "version": "1.0.0",
   "main": "dist/index.js",
   "author": "Emile Cantin",

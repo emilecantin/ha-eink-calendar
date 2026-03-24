@@ -15,13 +15,17 @@ bool config_load(Config* config) {
   if (!config->configured) {
     preferences.end();
     // Set defaults
-    config->server_url[0] = '\0';
+    config->ha_url[0] = '\0';
+    config->entry_id[0] = '\0';
     config->refresh_interval = DEFAULT_REFRESH_INTERVAL;
+    config->discovered = false;
     return false;
   }
 
-  preferences.getString("server_url", config->server_url, sizeof(config->server_url));
+  preferences.getString("ha_url", config->ha_url, sizeof(config->ha_url));
+  preferences.getString("entry_id", config->entry_id, sizeof(config->entry_id));
   config->refresh_interval = preferences.getUInt("refresh_int", DEFAULT_REFRESH_INTERVAL);
+  config->discovered = preferences.getBool("discovered", false);
 
   preferences.end();
   return true;
@@ -31,8 +35,10 @@ void config_save(const Config* config) {
   preferences.begin(CONFIG_NAMESPACE, false);  // read-write
 
   preferences.putBool("configured", config->configured);
-  preferences.putString("server_url", config->server_url);
+  preferences.putString("ha_url", config->ha_url);
+  preferences.putString("entry_id", config->entry_id);
   preferences.putUInt("refresh_int", config->refresh_interval);
+  preferences.putBool("discovered", config->discovered);
 
   preferences.end();
 }
@@ -77,5 +83,36 @@ void cache_clear() {
   preferences.remove("disp_valid");
   preferences.remove("etag");
   preferences.remove("last_check");
+  preferences.end();
+}
+
+bool endpoints_load(BitmapEndpoints* endpoints) {
+  preferences.begin(CONFIG_NAMESPACE, true);
+
+  bool has_endpoints = preferences.getString("ep_black_top", endpoints->black_top, sizeof(endpoints->black_top)) > 0;
+
+  if (!has_endpoints) {
+    preferences.end();
+    return false;
+  }
+
+  preferences.getString("ep_black_bot", endpoints->black_bottom, sizeof(endpoints->black_bottom));
+  preferences.getString("ep_red_top", endpoints->red_top, sizeof(endpoints->red_top));
+  preferences.getString("ep_red_bot", endpoints->red_bottom, sizeof(endpoints->red_bottom));
+  preferences.getString("ep_check", endpoints->check, sizeof(endpoints->check));
+
+  preferences.end();
+  return true;
+}
+
+void endpoints_save(const BitmapEndpoints* endpoints) {
+  preferences.begin(CONFIG_NAMESPACE, false);
+
+  preferences.putString("ep_black_top", endpoints->black_top);
+  preferences.putString("ep_black_bot", endpoints->black_bottom);
+  preferences.putString("ep_red_top", endpoints->red_top);
+  preferences.putString("ep_red_bot", endpoints->red_bottom);
+  preferences.putString("ep_check", endpoints->check);
+
   preferences.end();
 }
