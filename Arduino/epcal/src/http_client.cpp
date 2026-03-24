@@ -1,12 +1,32 @@
 #include "http_client.h"
 #include <HTTPClient.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 
 // Timeout for HTTP operations (ms)
 #define HTTP_TIMEOUT 15000
 // Timeout for download stalls - if no new data received for this long, abort (ms)
 #define DOWNLOAD_STALL_TIMEOUT 10000
+
+// Reusable secure client for HTTPS connections (skip cert verification for LAN use)
+static WiFiClientSecure secureClient;
+static WiFiClient plainClient;
+
+/**
+ * Begin an HTTP request, handling both http:// and https:// URLs.
+ * For HTTPS, uses WiFiClientSecure with certificate verification disabled
+ * (acceptable for LAN-only device communication).
+ */
+static void httpBegin(HTTPClient& http, const String& url) {
+  if (url.startsWith("https://")) {
+    secureClient.setInsecure();
+    http.begin(secureClient, url);
+  } else {
+    http.begin(plainClient, url);
+  }
+  http.setTimeout(HTTP_TIMEOUT);
+}
 
 AnnounceResponse http_announce(const char* ha_url, const char* mac,
                                const char* name, const char* fw_version) {
@@ -19,8 +39,7 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
   HTTPClient http;
   String url = String(ha_url) + "/api/eink_calendar/announce";
 
-  http.begin(url);
-  http.setTimeout(HTTP_TIMEOUT);
+  httpBegin(http, url);
   http.addHeader("Content-Type", "application/json");
 
   // Build JSON payload
@@ -30,6 +49,13 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
 
   int httpCode = http.POST(payload);
   response.http_code = httpCode;
+
+  if (httpCode == 404) {
+    Serial.println("Announce endpoint not found (integration not installed?)");
+    response.status = ANNOUNCE_NOT_INSTALLED;
+    http.end();
+    return response;
+  }
 
   if (httpCode != 200) {
     Serial.printf("Announce failed, HTTP %d\n", httpCode);
@@ -104,8 +130,7 @@ FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
   HTTPClient http;
   String url = String(ha_url) + check_path;
 
-  http.begin(url);
-  http.setTimeout(HTTP_TIMEOUT);
+  httpBegin(http, url);
 
   // Must collect ETag header before request
   const char* headerKeys[] = {"ETag"};
@@ -159,8 +184,7 @@ FetchResponse http_fetch_chunk(
   HTTPClient http;
   String url = String(ha_url) + endpoint;
 
-  http.begin(url);
-  http.setTimeout(HTTP_TIMEOUT);
+  httpBegin(http, url);
 
   // Must collect ETag header before request
   const char* headerKeys[] = {"ETag"};

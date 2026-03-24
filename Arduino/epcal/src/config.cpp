@@ -57,12 +57,10 @@ bool cache_load(CacheState* cache) {
   if (!cache->display_valid) {
     preferences.end();
     cache->etag[0] = '\0';
-    cache->last_check_epoch = 0;
     return false;
   }
 
   preferences.getString("etag", cache->etag, sizeof(cache->etag));
-  cache->last_check_epoch = preferences.getUInt("last_check", 0);
 
   preferences.end();
   return true;
@@ -73,7 +71,6 @@ void cache_save(const CacheState* cache) {
 
   preferences.putBool("disp_valid", cache->display_valid);
   preferences.putString("etag", cache->etag);
-  preferences.putUInt("last_check", cache->last_check_epoch);
 
   preferences.end();
 }
@@ -82,7 +79,6 @@ void cache_clear() {
   preferences.begin(CONFIG_NAMESPACE, false);
   preferences.remove("disp_valid");
   preferences.remove("etag");
-  preferences.remove("last_check");
   preferences.end();
 }
 

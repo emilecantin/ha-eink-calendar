@@ -83,4 +83,21 @@ void display_show_error(const char* message);
  */
 void display_show_setup_screen(const char* ssid, const char* url);
 
+/**
+ * Display the HA URL config screen with a runtime-generated QR code.
+ * Used when mDNS discovery fails and the user needs to enter the HA URL manually.
+ * The QR code points to http://<ip> where a config form is served.
+ *
+ * @param url  The URL to encode in the QR code (e.g., "http://192.168.1.45")
+ */
+void display_show_ha_config_screen(const char* url);
+
+/**
+ * Display a screen telling the user to install the integration, with a QR code
+ * linking to the GitHub repo README.
+ *
+ * @param repo_url  GitHub repo URL (e.g., "https://github.com/emilecantin/ha-eink-calendar")
+ */
+void display_show_install_screen(const char* repo_url);
+
 #endif // EINK_CALENDAR_DISPLAY_H

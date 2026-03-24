@@ -53,7 +53,7 @@ PlatformIO project for the ESP32 microcontroller.
 - `src/config.*` - NVS storage for HA URL, entry ID, endpoints
 - `src/display.*` - E-paper display driver
 - `src/http_client.*` - HTTP client with announce + bitmap fetch + ETag
-- `generate_qr.js` - Generates setup screen with QR codes
+- QR codes are generated at runtime using the `ricmoo/QRCode` library
 
 ### `/custom_components/eink_calendar/` - Home Assistant Integration
 

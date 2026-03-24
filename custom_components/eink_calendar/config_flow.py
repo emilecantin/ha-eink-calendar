@@ -7,6 +7,7 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant import config_entries
+from homeassistant.components.zeroconf import ZeroconfServiceInfo
 from homeassistant.core import callback
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.helpers import selector
@@ -77,6 +78,32 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 }
             ),
         )
+
+    async def async_step_zeroconf(
+        self, discovery_info: ZeroconfServiceInfo
+    ) -> FlowResult:
+        """Handle zeroconf discovery of an ESP32 device."""
+        mac = (discovery_info.properties.get("mac") or "").upper()
+        if not mac:
+            return self.async_abort(reason="no_mac")
+
+        await self.async_set_unique_id(mac)
+        self._abort_if_unique_id_configured()
+
+        name = discovery_info.name.split(".")[0]  # e.g., "eink-cal-01:00"
+        self._discovery_info = {
+            "mac": mac,
+            "name": name,
+            "firmware_version": discovery_info.properties.get("fw", "unknown"),
+            "ip": str(discovery_info.ip_address),
+        }
+        self.context["title_placeholders"] = {"name": name}
+
+        # Register HTTP views so announce endpoint is available
+        from . import ensure_http_views
+        ensure_http_views(self.hass)
+
+        return await self.async_step_configure()
 
     async def async_step_discovery(
         self, discovery_info: dict[str, Any]

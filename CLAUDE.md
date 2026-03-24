@@ -9,9 +9,7 @@ epcal/
 │   │   ├── epcal.ino           # Main sketch with mDNS + announce flow
 │   │   ├── config.*            # NVS storage for HA URL, entry ID, endpoints
 │   │   ├── display.*           # E-paper display driver
-│   │   ├── http_client.*       # HTTP client with announce + ETag support
-│   │   └── setup_screen.h      # Pre-rendered setup screen (generated)
-│   ├── generate_qr.js          # Generates setup_screen.h with QR codes
+│   │   └── http_client.*       # HTTP client with announce + ETag support
 │   └── platformio.ini          # Build config
 ├── custom_components/eink_calendar/  # Home Assistant custom component
 │   ├── __init__.py             # Integration entry point
@@ -143,14 +141,6 @@ pio run -t upload
 
 ```bash
 pio device monitor -b 115200
-```
-
-### Regenerating setup screen (QR codes)
-
-Run from server directory to use existing canvas/qrcode dependencies:
-
-```bash
-cd server && node ../Arduino/epcal/generate_qr.js
 ```
 
 ### Firmware Flow

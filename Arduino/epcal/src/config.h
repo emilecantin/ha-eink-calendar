@@ -15,7 +15,6 @@ struct Config {
 // Cache state for ETag-based change detection
 struct CacheState {
   char etag[33];              // MD5 hash is 32 chars + null
-  uint32_t last_check_epoch;  // Unix timestamp of last successful check
   bool display_valid;         // true if current display matches stored etag
 };
 

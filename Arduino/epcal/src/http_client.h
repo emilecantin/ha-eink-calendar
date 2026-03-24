@@ -21,9 +21,10 @@ struct FetchResponse {
 
 // Announce status
 enum AnnounceStatus {
-  ANNOUNCE_CONFIGURED,  // Device is configured, endpoints returned
-  ANNOUNCE_PENDING,     // Waiting for user to configure in HA
-  ANNOUNCE_ERROR        // Error communicating with HA
+  ANNOUNCE_CONFIGURED,      // Device is configured, endpoints returned
+  ANNOUNCE_PENDING,         // Waiting for user to configure in HA
+  ANNOUNCE_NOT_INSTALLED,   // HA found but integration not installed (404)
+  ANNOUNCE_ERROR            // Error communicating with HA
 };
 
 // Response from announce

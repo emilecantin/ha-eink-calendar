@@ -10,8 +10,8 @@
  */
 
 #include <WiFiManager.h>
+#include <WebServer.h>
 #include <ESPmDNS.h>
-#include <time.h>
 #include <esp_task_wdt.h>
 #include "config.h"
 #include "http_client.h"
@@ -38,11 +38,11 @@ int Version = 1;
 #define FIRMWARE_VERSION "1.0.0"
 #define DEVICE_NAME_PREFIX "EinkCal"
 
-// WiFiManager custom parameters
-char ha_url_override[128] = "";  // Optional manual HA URL override
-WiFiManagerParameter custom_ha_url("ha_url", "HA URL Override (optional)", "", 128);
-char refresh_interval_str[8] = "15";  // Default 15 minutes
-WiFiManagerParameter custom_refresh_interval("refresh", "Refresh Interval (minutes)", refresh_interval_str, 8);
+// WiFiManager custom parameters (shown on the advanced "Setup" page)
+char ha_url_override[128] = "";
+WiFiManagerParameter custom_ha_url("ha_url", "Home Assistant URL (leave blank for auto-detection)", "", 128);
+char refresh_interval_str[8] = "15";
+WiFiManagerParameter custom_refresh_interval("refresh", "Refresh interval (minutes)", refresh_interval_str, 8);
 
 // Global state
 Config config;
@@ -53,14 +53,21 @@ uint8_t* chunk_buffer = NULL;
 // Boot count for debugging
 RTC_DATA_ATTR int bootCount = 0;
 
+// TCP listener on port 443 — prevents Android 12+ "connection refused" on HTTPS probes
+WiFiServer httpsRedirectServer(443);
+
 // Forward declarations
 void saveParamsCallback();
 void handleConnectionFailure();
 void updateCalendar();
 void enterDeepSleep(uint32_t seconds);
 bool isSetupButtonHeld();
-bool discoverHomeAssistant();
-bool announceAndConfigure();
+bool tryAnnounce(const char* ha_url);
+bool discoverAndAnnounce();
+bool promptForHaUrl();
+void startHttpsRedirect();
+void stopHttpsRedirect();
+void handleHttpsRedirectClients();
 String getDeviceMac();
 String getDeviceName();
 
@@ -109,16 +116,40 @@ void setup() {
   // Initialize WiFiManager
   WiFiManager wm;
 
-  // Set timeout for config portal (5 minutes, 0 = no timeout)
-  wm.setConfigPortalTimeout(300);
+  // Set timeout for config portal (10 minutes for first-time setup)
+  wm.setConfigPortalTimeout(600);
 
-  // Captive portal improvements
+  // Portal behavior
   wm.setCaptivePortalEnable(true);
-  wm.setShowInfoUpdate(false);
-  wm.setShowInfoErase(true);
   wm.setConfigPortalBlocking(true);
   wm.setConnectRetries(5);
   wm.setConnectTimeout(10);
+
+  // Clean UI: hide info/update/erase, just show WiFi setup
+  wm.setShowInfoUpdate(false);
+  wm.setShowInfoErase(false);
+  const char* menuItems[] = {"wifi", "param", "exit"};
+  wm.setMenu(menuItems, 3);
+
+  // Move advanced params (HA URL, refresh) to a separate "Setup" page
+  wm.setParamsPage(true);
+
+  // Start HTTPS redirect server when AP comes up (must wait for AP to be active)
+  wm.setAPCallback([](WiFiManager* wm) {
+    startHttpsRedirect();
+  });
+
+  // Friendly title and styling
+  wm.setTitle("E-Ink Calendar");
+  wm.setDarkMode(false);
+  wm.setCustomHeadElement(
+    "<style>"
+    "body{font-family:-apple-system,sans-serif}"
+    ".msg{padding:12px;background:#e8f5e9;border-radius:8px;margin:10px 0}"
+    "h1{font-size:1.4em}"
+    "button{border-radius:8px}"
+    "</style>"
+  );
 
   // Set static IP for AP mode
   IPAddress apIP(192, 168, 4, 1);
@@ -126,7 +157,27 @@ void setup() {
   IPAddress apSubnet(255, 255, 255, 0);
   wm.setAPStaticIPConfig(apIP, apGateway, apSubnet);
 
-  wm.setClass("invert");
+  // Android captive portal fix: register handlers for probe URLs so Android
+  // detects the portal properly (Android 10+ sends probes to these URLs)
+  wm.setWebServerCallback([&wm]() {
+    auto redirect = [&wm]() {
+      wm.server->sendHeader("Location", "http://192.168.4.1/", true);
+      wm.server->send(302, "text/plain", "");
+    };
+    // Android probes
+    wm.server->on("/generate_204", HTTP_GET, redirect);
+    wm.server->on("/gen_204", HTTP_GET, redirect);
+    // Google connectivity check
+    wm.server->on("/connecttest.txt", HTTP_GET, redirect);
+    // Apple captive portal detection
+    wm.server->on("/hotspot-detect.html", HTTP_GET, redirect);
+    // Microsoft NCSI
+    wm.server->on("/ncsi.txt", HTTP_GET, redirect);
+    wm.server->on("/connecttest.txt", HTTP_GET, redirect);
+    // Firefox captive portal detection
+    wm.server->on("/canonical.html", HTTP_GET, redirect);
+    wm.server->on("/success.txt", HTTP_GET, redirect);
+  });
 
   // Pre-populate custom parameters with current values
   if (hasConfig && strlen(config.ha_url) > 0) {
@@ -136,7 +187,7 @@ void setup() {
   snprintf(refresh_interval_str, sizeof(refresh_interval_str), "%lu", (unsigned long)refresh_minutes);
   custom_refresh_interval.setValue(refresh_interval_str, 8);
 
-  // Add custom parameters
+  // Add advanced parameters (shown on separate "Setup" page)
   wm.addParameter(&custom_ha_url);
   wm.addParameter(&custom_refresh_interval);
 
@@ -151,10 +202,13 @@ void setup() {
   esp_task_wdt_delete(NULL);
 
   // Try to connect, or start config portal
+  // Note: HTTPS redirect on port 443 starts automatically via setAPCallback
+  // when the AP comes up, to fix Android 12+ captive portal detection.
   bool connected = false;
   if (forceSetup) {
     display_show_setup_screen(apName, configUrl);
     connected = wm.startConfigPortal(apName);
+    stopHttpsRedirect();
   } else if (hasConfig || wm.getWiFiIsSaved()) {
     Serial.println("Attempting WiFi connection...");
     wm.setEnableConfigPortal(false);
@@ -163,6 +217,7 @@ void setup() {
       Serial.println("WiFi connection failed, starting setup portal...");
       display_show_setup_screen(apName, configUrl);
       connected = wm.startConfigPortal(apName);
+      stopHttpsRedirect();
       if (connected) {
         cache_clear();
         Serial.println("Cache cleared after WiFi reconfiguration");
@@ -172,6 +227,7 @@ void setup() {
     Serial.println("No config found, starting setup portal...");
     display_show_setup_screen(apName, configUrl);
     connected = wm.startConfigPortal(apName);
+    stopHttpsRedirect();
   }
 
   // Re-enable watchdog now that WiFi is done
@@ -187,40 +243,29 @@ void setup() {
   Serial.println("WiFi connected!");
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
-  // Sync time via NTP
-  configTzTime("EST5EDT,M3.2.0,M11.1.0", "pool.ntp.org", "time.nist.gov");
-  Serial.print("Waiting for NTP time sync");
-  time_t now = time(NULL);
-  int retries = 0;
-  while (now < 1000000000 && retries < 20) {
-    delay(500);
-    Serial.print(".");
-    now = time(NULL);
-    retries++;
-  }
-  Serial.println();
-
-  struct tm* timeinfo = localtime(&now);
-  Serial.printf("Current time: %02d:%02d:%02d\n", timeinfo->tm_hour, timeinfo->tm_min, timeinfo->tm_sec);
-
-  // Step 1: Find Home Assistant (mDNS or override URL)
-  if (strlen(config.ha_url) == 0) {
-    Serial.println("No HA URL configured, trying mDNS discovery...");
-    if (!discoverHomeAssistant()) {
-      display_show_error("Home Assistant not found");
-      display_sleep();
-      enterDeepSleep(300);  // Retry in 5 minutes
-      return;
-    }
-  }
-
-  // Step 2: Announce to HA and get endpoints (or poll if pending)
+  // Step 1: Discover HA and announce (or use saved config)
   if (!config.discovered || !hasEndpoints) {
-    if (!announceAndConfigure()) {
-      // announceAndConfigure handles display messages
-      display_sleep();
-      enterDeepSleep(30);  // Retry in 30 seconds
-      return;
+    if (!discoverAndAnnounce()) {
+      if (config.ha_url[0] != '\0') {
+        // We found HA but aren't configured yet (pending or not installed) — poll
+        display_sleep();
+        enterDeepSleep(30);
+        return;
+      }
+
+      // No HA found — show config screen and serve a form on our WiFi IP
+      if (!promptForHaUrl()) {
+        display_sleep();
+        enterDeepSleep(300);
+        return;
+      }
+
+      // User entered a URL — try announcing to it
+      if (!discoverAndAnnounce()) {
+        display_sleep();
+        enterDeepSleep(config.ha_url[0] != '\0' ? 30 : 300);
+        return;
+      }
     }
   }
 
@@ -261,63 +306,27 @@ String getDeviceName() {
 }
 
 /**
- * Discover Home Assistant via mDNS
+ * Try announcing to a single HA instance.
+ * Returns true if device is fully configured, false otherwise.
+ * Sets config.discovered = true and saves on pending (so we retry the same URL).
  */
-bool discoverHomeAssistant() {
-  Serial.println("Starting mDNS discovery...");
-
-  if (!MDNS.begin(("eink-cal-" + getDeviceMac().substring(getDeviceMac().length() - 5)).c_str())) {
-    Serial.println("mDNS failed to start");
-    return false;
-  }
-
-  // Query for Home Assistant's _home-assistant._tcp service
-  int n = MDNS.queryService("home-assistant", "tcp");
-  if (n == 0) {
-    Serial.println("No Home Assistant found via mDNS");
-    MDNS.end();
-    return false;
-  }
-
-  // Use the first result
-  IPAddress haIP = MDNS.IP(0);
-  uint16_t haPort = MDNS.port(0);
-
-  snprintf(config.ha_url, sizeof(config.ha_url), "http://%s:%d",
-           haIP.toString().c_str(), haPort);
-
-  Serial.printf("Discovered Home Assistant at: %s\n", config.ha_url);
-
-  MDNS.end();
-
-  // Save the discovered URL
-  config.configured = true;
-  config_save(&config);
-
-  return true;
-}
-
-/**
- * Announce to Home Assistant and wait for configuration
- * Returns true if device is configured, false if still pending or error
- */
-bool announceAndConfigure() {
+bool tryAnnounce(const char* ha_url) {
   String mac = getDeviceMac();
   String name = getDeviceName();
 
-  Serial.printf("Announcing to %s...\n", config.ha_url);
+  Serial.printf("Announcing to %s...\n", ha_url);
 
-  AnnounceResponse resp = http_announce(config.ha_url, mac.c_str(),
+  AnnounceResponse resp = http_announce(ha_url, mac.c_str(),
                                          name.c_str(), FIRMWARE_VERSION);
 
   if (resp.status == ANNOUNCE_CONFIGURED) {
-    // Store entry_id and endpoints
+    strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
     strncpy(config.entry_id, resp.entry_id, sizeof(config.entry_id) - 1);
     config.refresh_interval = resp.refresh_interval * 60;  // Convert to seconds
     config.discovered = true;
+    config.configured = true;
     config_save(&config);
 
-    // Save endpoints
     endpoints = resp.endpoints;
     endpoints_save(&endpoints);
 
@@ -326,16 +335,258 @@ bool announceAndConfigure() {
   }
 
   if (resp.status == ANNOUNCE_PENDING) {
+    // Save this URL so we keep polling the same instance
+    strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
+    config.configured = true;
+    config_save(&config);
+
     display_show_message("Waiting for Home Assistant", "Configure in Settings > Devices");
     Serial.println("Waiting for user to configure device in HA...");
     return false;
   }
 
-  // Error
-  char errMsg[64];
-  snprintf(errMsg, sizeof(errMsg), "Announce failed (HTTP %d)", resp.http_code);
-  display_show_error(errMsg);
+  if (resp.status == ANNOUNCE_NOT_INSTALLED) {
+    // HA is there but the integration isn't installed yet — save URL, ask user to install
+    strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
+    config.configured = true;
+    config_save(&config);
+
+    display_show_install_screen("https://github.com/emilecantin/ha-eink-calendar");
+    Serial.println("HA found but integration not installed");
+    return false;
+  }
+
+  // Error — don't save, try next instance
+  Serial.printf("Announce failed (HTTP %d)\n", resp.http_code);
   return false;
+}
+
+/**
+ * Discover Home Assistant via mDNS and announce to each instance.
+ * If ha_url is already set (override or previous discovery), announce to that directly.
+ * Returns true if device is fully configured.
+ */
+bool discoverAndAnnounce() {
+  // If we already have a URL (override or previously discovered), try it directly
+  if (strlen(config.ha_url) > 0) {
+    return tryAnnounce(config.ha_url);
+  }
+
+  Serial.println("Starting mDNS discovery...");
+
+  String hostname = "eink-cal-" + getDeviceMac().substring(getDeviceMac().length() - 5);
+  if (!MDNS.begin(hostname.c_str())) {
+    Serial.println("mDNS failed to start");
+    return false;
+  }
+
+  // Advertise our service so HA's zeroconf can discover us
+  String mac = getDeviceMac();
+  MDNS.addService("eink-calendar", "tcp", 80);
+  MDNS.addServiceTxt("eink-calendar", "tcp", "mac", mac.c_str());
+  MDNS.addServiceTxt("eink-calendar", "tcp", "fw", FIRMWARE_VERSION);
+  Serial.println("mDNS service advertised: _eink-calendar._tcp");
+
+  int n = MDNS.queryService("home-assistant", "tcp");
+  if (n == 0) {
+    Serial.println("No Home Assistant found via mDNS");
+    MDNS.end();
+    return false;
+  }
+
+  Serial.printf("Found %d Home Assistant instance(s)\n", n);
+
+  // Try announcing to each discovered instance
+  for (int i = 0; i < n; i++) {
+    char url[128];
+
+    // Prefer base_url from TXT record (respects user's configured hostname/HTTPS)
+    String baseUrl = MDNS.txt(i, "base_url");
+    if (baseUrl.length() == 0) {
+      baseUrl = MDNS.txt(i, "internal_url");
+    }
+
+    if (baseUrl.length() > 0) {
+      // Remove trailing slash if present
+      if (baseUrl.endsWith("/")) baseUrl.remove(baseUrl.length() - 1);
+      strncpy(url, baseUrl.c_str(), sizeof(url) - 1);
+      url[sizeof(url) - 1] = '\0';
+    } else {
+      // Fallback to IP + port
+      snprintf(url, sizeof(url), "http://%s:%d",
+               MDNS.address(i).toString().c_str(), MDNS.port(i));
+    }
+
+    Serial.printf("Trying instance %d: %s\n", i + 1, url);
+
+    if (tryAnnounce(url)) {
+      MDNS.end();
+      return true;
+    }
+
+    // If announce returned pending, we've already saved this URL and shown
+    // the waiting message — stop trying others
+    if (strlen(config.ha_url) > 0) {
+      MDNS.end();
+      return false;
+    }
+  }
+
+  MDNS.end();
+  return false;
+}
+
+/**
+ * Serve a web form on the current WiFi IP so the user can enter the HA URL.
+ * Displays a QR code pointing to the form. Blocks until submission or timeout.
+ * Returns true if user submitted a URL (saved to config), false on timeout.
+ */
+bool promptForHaUrl() {
+  String ip = WiFi.localIP().toString();
+  String formUrl = "http://" + ip;
+
+  Serial.printf("Starting HA URL config server at %s\n", formUrl.c_str());
+
+  // Show QR code on display pointing to our IP
+  display_show_ha_config_screen(formUrl.c_str());
+
+  WebServer server(80);
+  volatile bool submitted = false;
+
+  // Serve the config form
+  server.on("/", HTTP_GET, [&server]() {
+    server.send(200, "text/html",
+      "<!DOCTYPE html><html><head>"
+      "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+      "<title>E-Ink Calendar</title>"
+      "<style>"
+      "body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}"
+      "h1{font-size:1.4em}input[type=text]{width:100%;padding:12px;font-size:1em;"
+      "box-sizing:border-box;margin:8px 0}button{background:#03a9f4;color:#fff;"
+      "border:none;padding:14px 24px;font-size:1em;cursor:pointer;width:100%}"
+      "</style></head><body>"
+      "<h1>E-Ink Calendar Setup</h1>"
+      "<p>Home Assistant was not found automatically on your network.</p>"
+      "<p>Enter your Home Assistant URL below:</p>"
+      "<form method='POST' action='/save'>"
+      "<input type='text' name='ha_url' placeholder='http://homeassistant.local:8123' "
+      "required autofocus>"
+      "<br><button type='submit'>Save</button>"
+      "</form></body></html>"
+    );
+  });
+
+  server.on("/save", HTTP_POST, [&server, &submitted]() {
+    String url = server.arg("ha_url");
+    if (url.length() > 0) {
+      // Remove trailing slash
+      if (url.endsWith("/")) url.remove(url.length() - 1);
+
+      strncpy(config.ha_url, url.c_str(), sizeof(config.ha_url) - 1);
+      config.ha_url[sizeof(config.ha_url) - 1] = '\0';
+      config.configured = true;
+      config.discovered = false;
+      config_save(&config);
+      cache_clear();
+
+      Serial.printf("HA URL saved: %s\n", config.ha_url);
+
+      server.send(200, "text/html",
+        "<!DOCTYPE html><html><head>"
+        "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+        "<style>body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}</style>"
+        "</head><body>"
+        "<h1>Saved!</h1>"
+        "<p>The display will now connect to Home Assistant.</p>"
+        "</body></html>"
+      );
+
+      submitted = true;
+    } else {
+      server.send(400, "text/html", "<h1>URL is required</h1>");
+    }
+  });
+
+  server.begin();
+  Serial.println("Config server started, waiting for user input...");
+
+  // Disable watchdog — we're waiting for user interaction
+  esp_task_wdt_delete(NULL);
+
+  // Wait for submission or timeout (5 minutes)
+  unsigned long start = millis();
+  while (!submitted && (millis() - start < 300000)) {
+    server.handleClient();
+    delay(10);
+  }
+
+  server.stop();
+  esp_task_wdt_add(NULL);
+
+  if (submitted) {
+    Serial.println("User submitted HA URL");
+    return true;
+  }
+
+  Serial.println("Config server timed out");
+  return false;
+}
+
+// Handle for the HTTPS redirect background task
+static TaskHandle_t httpsTaskHandle = NULL;
+static volatile bool httpsTaskRunning = false;
+
+/**
+ * Background task that accepts TCP connections on port 443 and sends HTTP 302
+ * redirects. Runs on core 0 so it works while WiFiManager blocks on core 1.
+ */
+static void httpsRedirectTask(void* param) {
+  while (httpsTaskRunning) {
+    WiFiClient client = httpsRedirectServer.accept();
+    if (client) {
+      // Wait briefly for data (Android sends a TLS ClientHello, we ignore it)
+      unsigned long start = millis();
+      while (client.connected() && !client.available() && millis() - start < 200) {
+        delay(1);
+      }
+      // Drain any incoming data
+      while (client.available()) client.read();
+
+      // Send HTTP 302 redirect — this isn't valid TLS, but Android's captive
+      // portal detector accepts it and triggers the portal popup
+      client.print(
+        "HTTP/1.1 302 Found\r\n"
+        "Location: http://192.168.4.1/\r\n"
+        "Content-Length: 0\r\n"
+        "Connection: close\r\n\r\n"
+      );
+      client.stop();
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));
+  }
+  vTaskDelete(NULL);
+}
+
+/**
+ * Start TCP listener on port 443 for Android 12+ captive portal detection.
+ * Android sends HTTPS probes; without a listener, the connection is refused
+ * and Android shows "no internet" instead of the captive portal prompt.
+ * Runs as a background task on core 0 since WiFiManager blocks the main loop.
+ */
+void startHttpsRedirect() {
+  httpsRedirectServer.begin();
+  httpsTaskRunning = true;
+  xTaskCreatePinnedToCore(httpsRedirectTask, "https443", 4096, NULL, 1, &httpsTaskHandle, 0);
+  Serial.println("HTTPS redirect listener started on port 443");
+}
+
+void stopHttpsRedirect() {
+  httpsTaskRunning = false;
+  if (httpsTaskHandle) {
+    vTaskDelay(pdMS_TO_TICKS(100));  // Let the task exit cleanly
+    httpsTaskHandle = NULL;
+  }
+  httpsRedirectServer.stop();
 }
 
 /**
@@ -403,8 +654,6 @@ void updateCalendar() {
 
   if (checkResponse.result == FETCH_NOT_MODIFIED) {
     Serial.println("Calendar unchanged (304), skipping display refresh");
-    cache.last_check_epoch = time(NULL);
-    cache_save(&cache);
     return;
   }
 
@@ -503,7 +752,6 @@ void updateCalendar() {
     display_refresh();
 
     cache.display_valid = true;
-    cache.last_check_epoch = time(NULL);
     cache_save(&cache);
 
     Serial.println("Display updated successfully!");
