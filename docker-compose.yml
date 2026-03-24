@@ -1,19 +1,4 @@
 services:
-  # Original Node.js server (deprecated - to be removed)
-  epcal-server:
-    build: ./server
-    # image: registry.gitlab.com/emilecantin/epcal/addon:latest
-    ports:
-      - "4000:4000"
-    volumes:
-      - ./config:/app/config
-    environment:
-      - CONFIG_PATH=/app/config/epcal-config.json
-      - TZ=America/Toronto
-    restart: unless-stopped
-    profiles:
-      - legacy # Only start with: docker-compose --profile legacy up
-
   # Home Assistant test environment for integration development
   homeassistant:
     container_name: ha-epcal-test

@@ -12,7 +12,7 @@ epcal/
 ├── docs/                       # Documentation
 ├── comparison_tests/           # Visual regression test results
 ├── ha-test-config/            # Home Assistant test environment
-└── addon/                      # Home Assistant add-on packaging
+└── docs/                       # Documentation
 ```
 
 ## Directory Details
@@ -102,21 +102,12 @@ Home Assistant configuration for testing the integration.
 
 **Note**: `test_data_library.py` is a symlink to `tests/fixtures/test_data_library.py`
 
-### `/addon/` - Home Assistant Add-on
-
-Packaging files for the EPCAL Home Assistant add-on.
-
-- `config.yaml` - Add-on metadata
-- `Dockerfile` - Multi-arch container build
-- `run.sh` - Add-on startup script
-
 ## Root Files
 
 - `CLAUDE.md` - Development guidelines for Claude Code
 - `README.md` - Main project documentation
-- `docker-compose.yml` - Standalone Docker deployment
+- `docker-compose.yml` - Home Assistant test environment
 - `pyrightconfig.json` - Python type checking configuration
-- `repository.yaml` - HA add-on repository metadata
 
 ## Build Artifacts (gitignored)
 

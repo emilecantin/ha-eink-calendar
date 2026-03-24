@@ -4,20 +4,30 @@
 
 ```
 epcal/
-├── Arduino/epcal/          # ESP32 firmware (PlatformIO)
+├── Arduino/epcal/              # ESP32 firmware (PlatformIO)
 │   ├── src/
-│   │   ├── epcal.ino       # Main sketch with state machine
-│   │   ├── config.*        # NVS storage for WiFi/server config
-│   │   ├── display.*       # E-paper display driver
-│   │   ├── http_client.*   # HTTP client with ETag support
-│   │   └── setup_screen.h  # Pre-rendered setup screen (generated)
-│   ├── generate_qr.js      # Generates setup_screen.h with QR codes
-│   └── platformio.ini      # Build config
-└── server/                 # Node.js/Express server
-    ├── index.ts            # Main server, endpoints, config UI
-    ├── renderer.ts         # Canvas-based calendar rendering
-    ├── fonts/              # Inter font files for e-paper
-    └── .epcal-config.json  # Runtime config (gitignored)
+│   │   ├── epcal.ino           # Main sketch with state machine
+│   │   ├── config.*            # NVS storage for WiFi/server config
+│   │   ├── display.*           # E-paper display driver
+│   │   ├── http_client.*       # HTTP client with ETag support
+│   │   └── setup_screen.h      # Pre-rendered setup screen (generated)
+│   ├── generate_qr.js          # Generates setup_screen.h with QR codes
+│   └── platformio.ini          # Build config
+├── custom_components/epcal/    # Home Assistant custom component
+│   ├── __init__.py             # Integration entry point
+│   ├── config_flow.py          # UI configuration wizard
+│   ├── coordinator.py          # Data coordinator (calendar/weather)
+│   ├── camera.py               # Preview camera entity
+│   ├── image.py                # Bitmap image entities
+│   ├── sensor.py               # Last update sensor
+│   ├── http_views.py           # Device pairing API
+│   ├── services.py             # Device management services
+│   └── renderer/               # Python calendar renderer
+└── server/                     # Node.js/Express server (reference impl)
+    ├── index.ts                # Main server, endpoints, config UI
+    ├── renderer.ts             # Canvas-based calendar rendering
+    ├── fonts/                  # Inter font files for e-paper
+    └── .epcal-config.json      # Runtime config (gitignored)
 ```
 
 ## Server Development
@@ -150,25 +160,9 @@ Hold BOOT button (GPIO0) for 2 seconds during startup to enter config mode. Disp
 
 ## Development Guidelines
 
-### Be Extra Careful With Deployment Scripts
+### Home Assistant Integration
 
-**Shell scripts, Dockerfiles, and CI configurations are slow to test.** Before editing:
+The primary deployment target is the **custom component** (`custom_components/epcal/`). The old Node.js add-on has been removed.
 
-1. **Consider ALL execution environments**:
-   - `addon/run.sh` runs in BOTH HA Supervisor (with bashio, SUPERVISOR_TOKEN) AND standalone Docker (without them)
-   - `addon/Dockerfile` builds for CI (repo root context) but add-on expects addon/ context
-   - Always handle missing environment variables gracefully (`${VAR:-default}`)
-
-2. **Trace through the script mentally** for each environment before committing
-
-3. **Shell script gotchas**:
-   - `set -e` makes unset variables fatal - use `${VAR:-}` syntax
-   - Check if files/commands exist before using them (`[ -f file ] && ...`)
-   - Test both success and failure paths
-
-4. **Docker/CI gotchas**:
-   - Build context matters - COPY paths are relative to context, not Dockerfile location
-   - Multi-arch builds need QEMU and buildx configuration
-   - GitLab CI Docker-in-Docker has TLS quirks
-
-5. **When in doubt, ask** rather than making assumptions about runtime environment
+- Test with: `docker-compose up` (starts HA with the component mounted)
+- The custom component has its own Python renderer (no Node.js dependency)
