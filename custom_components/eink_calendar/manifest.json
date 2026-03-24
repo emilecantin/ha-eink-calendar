@@ -7,7 +7,7 @@
   "issue_tracker": "https://github.com/emilecantin/ha-eink-calendar/issues",
   "requirements": ["Pillow>=10.0.0"],
   "dependencies": [],
-  "version": "0.1.0",
+  "version": "0.1.1",
   "iot_class": "local_polling",
   "integration_type": "device"
 }
