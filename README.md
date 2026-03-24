@@ -1,4 +1,6 @@
-# EPCAL - E-Paper Calendar
+# EPCAL - E-Ink Calendar Display
+
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=emilecantin&repository=ha-eink-calendar&category=integration)
 
 A battery-powered IoT calendar display that shows your Home Assistant calendar events on a large 12.48" tri-color e-paper screen.
 
@@ -166,7 +168,7 @@ The Python renderer has been updated to match Canvas border behavior exactly. Se
 
 ## Contributing
 
-Issues and merge requests welcome at https://gitlab.com/emilecantin/epcal
+Issues and pull requests welcome at https://github.com/emilecantin/ha-eink-calendar
 
 ## License
 
