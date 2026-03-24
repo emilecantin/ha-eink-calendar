@@ -150,11 +150,9 @@ def draw_landscape_today_section(
 
             # Weather icon (MDI PNG)
             condition = today_forecast.get("condition", "")
-            icon = get_weather_icon(condition)
+            icon_size = 44
+            icon = get_weather_icon(condition, size=icon_size)
             if icon:
-                # Scale icon to ~44px to match old font size
-                icon_size = 44
-                icon = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
                 icon_width = icon_size
                 icon_x = int(
                     weather_right_edge - temp_width - 8 - icon_width
@@ -270,12 +268,9 @@ def draw_landscape_today_section(
                 # Icon centered on line (MDI PNG)
                 calendar_icon = event.get("calendarIcon")
                 if calendar_icon:
-                    icon_img = get_mdi_icon(calendar_icon)
+                    icon_size = 18
+                    icon_img = get_mdi_icon(calendar_icon, size=icon_size)
                     if icon_img:
-                        icon_size = 18
-                        icon_img = icon_img.resize(
-                            (icon_size, icon_size), Image.Resampling.LANCZOS
-                        )
                         icon_x = line_left + (line_right - line_left - icon_size) / 2
                         # Vertically center icon in the all-day event bar
                         icon_y = block_y + 4
@@ -297,12 +292,9 @@ def draw_landscape_today_section(
                 # Icon centered (MDI PNG)
                 calendar_icon = event.get("calendarIcon")
                 if calendar_icon:
-                    icon_img = get_mdi_icon(calendar_icon)
+                    icon_size = 18
+                    icon_img = get_mdi_icon(calendar_icon, size=icon_size)
                     if icon_img:
-                        icon_size = 18
-                        icon_img = icon_img.resize(
-                            (icon_size, icon_size), Image.Resampling.LANCZOS
-                        )
                         icon_x = header_x + (event_width - icon_size) / 2
                         # Vertically center icon
                         icon_y = block_y + 2
@@ -332,12 +324,9 @@ def draw_landscape_today_section(
                 # Icon centered (MDI PNG)
                 calendar_icon = event.get("calendarIcon")
                 if calendar_icon:
-                    icon_img = get_mdi_icon(calendar_icon)
+                    icon_size = 18
+                    icon_img = get_mdi_icon(calendar_icon, size=icon_size)
                     if icon_img:
-                        icon_size = 18
-                        icon_img = icon_img.resize(
-                            (icon_size, icon_size), Image.Resampling.LANCZOS
-                        )
                         icon_x = header_x + (event_width - icon_size) / 2
                         # Vertically center icon
                         icon_y = block_y + 2
@@ -385,12 +374,8 @@ def draw_landscape_today_section(
 
         for icon_str in collection_icons:
             # Get MDI icon PNG
-            icon_img = get_mdi_icon(icon_str)
+            icon_img = get_mdi_icon(icon_str, size=icon_size)
             if icon_img:
-                # Scale and colorize icon
-                icon_img = icon_img.resize(
-                    (icon_size, icon_size), Image.Resampling.LANCZOS
-                )
                 # Create red version
                 red_icon = Image.new("RGBA", icon_img.size, COLORS["RED"] + (255,))
                 red_icon.putalpha(icon_img.split()[3])  # Use original alpha
@@ -419,12 +404,9 @@ def draw_landscape_today_section(
             y = legend_top + legend_header_height + row * legend_item_height
 
             # Icon (MDI PNG)
-            icon_img = get_mdi_icon(item["icon"])
+            icon_size = 14
+            icon_img = get_mdi_icon(item["icon"], size=icon_size)
             if icon_img:
-                icon_size = 14
-                icon_img = icon_img.resize(
-                    (icon_size, icon_size), Image.Resampling.LANCZOS
-                )
                 # Vertically center icon with text
                 # Offset icon down slightly to align with visual center of text
                 icon_y = y + 2

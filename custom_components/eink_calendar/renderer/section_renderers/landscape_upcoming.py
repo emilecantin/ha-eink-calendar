@@ -133,12 +133,9 @@ def draw_landscape_upcoming_section(
             # Calendar icon + title (MDI PNG)
             title_x = x + 110
             if event.get("calendarIcon"):
-                icon_img = get_mdi_icon(event["calendarIcon"])
+                icon_size = 16
+                icon_img = get_mdi_icon(event["calendarIcon"], size=icon_size)
                 if icon_img:
-                    icon_size = 16
-                    icon_img = icon_img.resize(
-                        (icon_size, icon_size), Image.Resampling.LANCZOS
-                    )
                     # Vertically center icon with text
                     icon_y = y + 2
                     img.paste(icon_img, (int(title_x), int(icon_y)), icon_img)

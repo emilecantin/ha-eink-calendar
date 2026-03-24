@@ -59,7 +59,7 @@ WiFiServer httpsRedirectServer(443);
 // Forward declarations
 void saveParamsCallback();
 void handleConnectionFailure();
-void updateCalendar();
+bool updateCalendar();
 void enterDeepSleep(uint32_t seconds);
 bool isSetupButtonHeld();
 bool tryAnnounce(const char* ha_url);
@@ -282,7 +282,12 @@ void setup() {
   }
 
   // Step 3: Check for calendar updates and refresh display
-  updateCalendar();
+  if (!updateCalendar()) {
+    // Download failed — retry in 60 seconds instead of full interval
+    Serial.println("Calendar update failed, retrying in 60s");
+    enterDeepSleep(60);
+    return;
+  }
 
   // Disconnect WiFi to save power
   WiFi.disconnect(true);
@@ -639,9 +644,10 @@ void handleConnectionFailure() {
 }
 
 /**
- * Check server for updates and refresh display if needed
+ * Check server for updates and refresh display if needed.
+ * Returns true on success (or no change), false on failure.
  */
-void updateCalendar() {
+bool updateCalendar() {
   Serial.println("Checking for calendar updates...");
   Serial.printf("HA URL: %s\n", config.ha_url);
 
@@ -653,16 +659,12 @@ void updateCalendar() {
 
   if (checkResponse.result == FETCH_NOT_MODIFIED) {
     Serial.println("Calendar unchanged (304), skipping display refresh");
-    return;
+    return true;
   }
 
   if (checkResponse.result == FETCH_ERROR) {
     Serial.printf("Check failed with HTTP %d\n", checkResponse.http_code);
-    char errMsg[64];
-    snprintf(errMsg, sizeof(errMsg), "Server error (HTTP %d)", checkResponse.http_code);
-    display_show_error(errMsg);
-    display_sleep();
-    return;
+    return false;
   }
 
   esp_task_wdt_reset();
@@ -676,7 +678,7 @@ void updateCalendar() {
     Serial.println("Failed to allocate chunk buffer!");
     display_show_error("Memory allocation failed");
     display_sleep();
-    return;
+    return false;
   }
 
   // Initialize display
@@ -756,12 +758,11 @@ void updateCalendar() {
     Serial.println("Display updated successfully!");
   } else {
     Serial.printf("Download failed for %s\n", failedEndpoint);
-    char errMsg[64];
-    snprintf(errMsg, sizeof(errMsg), "Download failed: %s", failedEndpoint);
-    display_show_error(errMsg);
+    display_show_message("Download failed", "Retrying in 60 seconds...");
   }
 
   display_sleep();
+  return success;
 }
 
 /**

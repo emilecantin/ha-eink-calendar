@@ -11,20 +11,17 @@ from .icon_utils import get_weather_icon as get_weather_icon_image
 from .types import WeatherData, WeatherForecast
 
 
-def get_weather_icon(condition: str) -> Image.Image | None:
+def get_weather_icon(condition: str, size: int = 24) -> Image.Image | None:
     """Get weather icon PIL Image for a condition.
 
     Args:
         condition: Weather condition string (e.g., "sunny", "rainy")
+        size: Icon size in pixels
 
     Returns:
         PIL Image object for the weather icon, or None if not found
-
-    Note:
-        This now returns a PIL Image instead of a Unicode symbol.
-        Use img.paste(icon, (x, y), icon) to paste with transparency.
     """
-    return get_weather_icon_image(condition.lower())
+    return get_weather_icon_image(condition.lower(), size=size)
 
 
 def get_forecast_for_date(

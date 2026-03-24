@@ -9,6 +9,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers import entity_registry as er
 from homeassistant.util import dt as dt_util
 
 from .const import (
@@ -82,13 +83,14 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                     _LOGGER.warning("Calendar %s not found", calendar_id)
                     continue
 
-                # Get calendar icon
-                calendar_icon = calendar_state.attributes.get("icon", "mdi:calendar")
-                _LOGGER.debug(
-                    "Calendar %s icon: %s (from attributes: %s)",
-                    calendar_id,
-                    calendar_icon,
-                    calendar_state.attributes.get("icon"),
+                # Get calendar icon — check entity registry first (user customizations),
+                # then fall back to state attributes, then default
+                ent_reg = er.async_get(self.hass)
+                entry = ent_reg.async_get(calendar_id)
+                calendar_icon = (
+                    (entry.icon if entry and entry.icon else None)
+                    or calendar_state.attributes.get("icon")
+                    or "mdi:calendar"
                 )
 
                 # Call calendar service to get events

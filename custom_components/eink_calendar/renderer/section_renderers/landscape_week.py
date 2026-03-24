@@ -210,11 +210,9 @@ def draw_landscape_week_section(
 
                 # Weather icon (MDI PNG)
                 condition = day_forecast.get("condition", "")
-                icon = get_weather_icon(condition)
+                icon_size = 32
+                icon = get_weather_icon(condition, size=icon_size)
                 if icon:
-                    # Scale icon to ~32px to match old font size
-                    icon_size = 32
-                    icon = icon.resize((icon_size, icon_size), Image.Resampling.LANCZOS)
                     icon_width = icon_size
                     icon_x = int(
                         right_margin - temp_width - 6 - icon_width
@@ -350,12 +348,9 @@ def draw_landscape_week_section(
                 # Calendar icon (MDI PNG)
                 calendar_icon = event.get("calendarIcon")
                 if calendar_icon:
-                    icon_img = get_mdi_icon(calendar_icon)
+                    icon_size = 14
+                    icon_img = get_mdi_icon(calendar_icon, size=icon_size)
                     if icon_img:
-                        icon_size = 14
-                        icon_img = icon_img.resize(
-                            (icon_size, icon_size), Image.Resampling.LANCZOS
-                        )
                         icon_x = day_x + (day_width - icon_size) / 2
                         # Vertically center icon: add offset for all-day events, or align with text
                         icon_y = event_y + (2 if event.get("allDay") else 0)
@@ -402,12 +397,8 @@ def draw_landscape_week_section(
 
             for icon_str in collection_icons:
                 # Get MDI icon PNG
-                icon_img = get_mdi_icon(icon_str)
+                icon_img = get_mdi_icon(icon_str, size=icon_size)
                 if icon_img:
-                    # Scale and colorize icon
-                    icon_img = icon_img.resize(
-                        (icon_size, icon_size), Image.Resampling.LANCZOS
-                    )
                     # Create red version
                     red_icon = Image.new("RGBA", icon_img.size, COLORS["RED"] + (255,))
                     red_icon.putalpha(icon_img.split()[3])  # Use original alpha
