@@ -45,6 +45,11 @@ class EinkCalendarAnnounceView(HomeAssistantView):
             # Check if MAC matches an existing config entry
             for entry in self.hass.config_entries.async_entries(DOMAIN):
                 if entry.data.get(CONF_MAC_ADDRESS) == mac:
+                    # Record check-in
+                    coordinator = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
+                    if coordinator:
+                        coordinator.record_checkin()
+
                     # Device is already configured
                     return self.json(
                         {
@@ -133,6 +138,11 @@ class EinkCalendarBitmapView(HomeAssistantView):
                     entry_mac,
                 )
                 return web.Response(text="Unauthorized", status=403)
+
+            # Record device check-in
+            coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
+            if coordinator:
+                coordinator.record_checkin()
 
             # Handle ETag check endpoint
             if layer == "check":

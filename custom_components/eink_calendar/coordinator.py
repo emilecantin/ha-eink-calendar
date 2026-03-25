@@ -38,6 +38,12 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         )
         self.entry = entry
         self._last_render_day: datetime | None = None
+        self.last_checkin: datetime | None = None
+
+    def record_checkin(self) -> None:
+        """Record a device check-in and notify listeners (sensors)."""
+        self.last_checkin = dt_util.now()
+        self.async_set_updated_data(self.data)
 
     def _has_configured_calendars(self) -> bool:
         """Check if any calendars are configured."""
