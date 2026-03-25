@@ -391,7 +391,7 @@ def draw_landscape_week_section(
                 - len(collection_icons) * (icon_size + icon_spacing)
                 - 6
             )
-            icon_y = grid_bottom - 6
+            icon_y = grid_bottom - icon_size - 4
 
             for icon_str in collection_icons:
                 # Get MDI icon PNG

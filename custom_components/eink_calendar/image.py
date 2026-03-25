@@ -7,7 +7,7 @@ from datetime import datetime
 
 from homeassistant.components.image import ImageEntity
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import (
@@ -20,7 +20,6 @@ from .const import (
     IMAGE_RED_TOP_NAME,
 )
 from .coordinator import EinkCalendarDataCoordinator
-from .renderer.renderer import RenderedCalendar, render_calendar
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -67,101 +66,43 @@ class EinkCalendarBitmapImage(ImageEntity):
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
         self._attr_content_type = "application/octet-stream"
-        self._cached_render: RenderedCalendar | None = None
-        self._last_render_time: datetime | None = None
-        self._last_config_hash: int | None = None
+        self._render_timestamp: datetime | None = None
 
-    def _needs_render(self) -> bool:
-        """Check if re-render is needed."""
-        if self._cached_render is None:
-            return True
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to coordinator updates."""
+        await super().async_added_to_hass()
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+        # Trigger initial render
+        await self._update_from_coordinator()
 
-        # Check if manual render was triggered
-        if self.coordinator.data and self.coordinator.data.get("force_render"):
-            _LOGGER.debug("Manual render triggered, re-rendering")
-            return True
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.hass.async_create_task(self._update_from_coordinator())
 
-        # Check if configuration changed (convert lists to tuples for hashing)
-        config_items = []
-        for k, v in self.entry.options.items():
-            if isinstance(v, list):
-                config_items.append((k, tuple(v)))
-            else:
-                config_items.append((k, v))
-        config_hash = hash(frozenset(config_items))
-        if config_hash != self._last_config_hash:
-            _LOGGER.debug("Configuration changed, re-rendering")
-            self._last_config_hash = config_hash
-            return True
-
-        # Check if coordinator data changed
-        if (
-            self.coordinator.data
-            and self.coordinator.data.get("timestamp") != self._cached_render.timestamp
-        ):
-            _LOGGER.debug("Coordinator data changed, re-rendering")
-            return True
-
-        return False
+    async def _update_from_coordinator(self) -> None:
+        """Fetch rendered data and update image timestamp."""
+        rendered = await self.coordinator.async_get_rendered()
+        if rendered and rendered.timestamp != self._render_timestamp:
+            self._render_timestamp = rendered.timestamp
+            self._attr_image_last_updated = rendered.timestamp
+            self.async_write_ha_state()
 
     async def async_image(self) -> bytes | None:
         """Return image bytes."""
-        try:
-            # Re-render if needed
-            if self._needs_render():
-                data = self.coordinator.data
-                if not data:
-                    _LOGGER.warning("No coordinator data available")
-                    return self._get_cached_chunk()
-
-                # Render calendar
-                rendered = await self.hass.async_add_executor_job(
-                    render_calendar,
-                    data.get("calendar_events", []),
-                    data.get("waste_events", []),
-                    data.get("weather_data"),
-                    data.get("timestamp", datetime.now()),
-                    self.entry.options,
-                )
-
-                self._cached_render = rendered
-                self._last_render_time = datetime.now()
-                # Convert lists to tuples for hashing
-                config_items = []
-                for k, v in self.entry.options.items():
-                    if isinstance(v, list):
-                        config_items.append((k, tuple(v)))
-                    else:
-                        config_items.append((k, v))
-                self._last_config_hash = hash(frozenset(config_items))
-
-                _LOGGER.debug("Rendered new calendar (ETag: %s)", rendered.etag[:8])
-
-            return self._get_cached_chunk()
-
-        except Exception as err:
-            _LOGGER.error(
-                "Error rendering image for %s: %s", self.layer_type, err, exc_info=True
-            )
-            return self._get_cached_chunk()
-
-    def _get_cached_chunk(self) -> bytes | None:
-        """Get the appropriate chunk from cached render."""
-        if not self._cached_render:
+        rendered = await self.coordinator.async_get_rendered()
+        if not rendered:
             return None
 
         if self.layer_type == "black_top":
-            return self._cached_render.get_black_top()
+            return rendered.get_black_top()
         elif self.layer_type == "black_bottom":
-            return self._cached_render.get_black_bottom()
+            return rendered.get_black_bottom()
         elif self.layer_type == "red_top":
-            return self._cached_render.get_red_top()
+            return rendered.get_red_top()
         elif self.layer_type == "red_bottom":
-            return self._cached_render.get_red_bottom()
+            return rendered.get_red_bottom()
 
         return None
-
-    @property
-    def image_last_updated(self) -> datetime | None:
-        """Return timestamp of last render."""
-        return self._last_render_time

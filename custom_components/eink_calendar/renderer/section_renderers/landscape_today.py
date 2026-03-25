@@ -368,7 +368,7 @@ def draw_landscape_today_section(
         current_x = (
             section_width - margin - len(collection_icons) * (icon_size + icon_spacing)
         )
-        icon_y = legend_top - 8
+        icon_y = legend_top - icon_size - 4
 
         for icon_str in collection_icons:
             # Get MDI icon PNG
