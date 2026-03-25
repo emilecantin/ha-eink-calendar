@@ -39,11 +39,38 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self._last_render_day: datetime | None = None
         self.last_checkin: datetime | None = None
+        self._cached_render = None
+        self._cached_render_timestamp: datetime | None = None
 
     def record_checkin(self) -> None:
         """Record a device check-in and notify listeners (sensors)."""
         self.last_checkin = dt_util.now()
         self.async_set_updated_data(self.data)
+
+    async def async_get_rendered(self):
+        """Get cached rendered calendar, re-rendering only when data changes."""
+        from .renderer.renderer import render_calendar
+
+        data = self.data
+        if not data:
+            return None
+
+        data_ts = data.get("timestamp")
+        if self._cached_render is not None and self._cached_render_timestamp == data_ts:
+            return self._cached_render
+
+        rendered = await self.hass.async_add_executor_job(
+            render_calendar,
+            data.get("calendar_events", []),
+            data.get("waste_events", []),
+            data.get("weather_data"),
+            data_ts,
+            self.entry.options,
+        )
+
+        self._cached_render = rendered
+        self._cached_render_timestamp = data_ts
+        return rendered
 
     def _has_configured_calendars(self) -> bool:
         """Check if any calendars are configured."""

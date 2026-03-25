@@ -37,10 +37,16 @@ class RenderedCalendar:
     """Container for rendered calendar data."""
 
     def __init__(
-        self, black_layer: bytes, red_layer: bytes, etag: str, timestamp: datetime
+        self,
+        black_layer: bytes,
+        red_layer: bytes,
+        preview_png: bytes,
+        etag: str,
+        timestamp: datetime,
     ):
         self.black_layer_full = black_layer
         self.red_layer_full = red_layer
+        self.preview_png = preview_png
         self.etag = etag
         self.timestamp = timestamp
         self.width = DISPLAY["LANDSCAPE"]["width"]
@@ -97,59 +103,37 @@ def render_calendar(
     # Create legend from regular calendars
     legend = _create_legend(calendar_events)
 
+    def _draw_all_sections(draw: ImageDraw.ImageDraw, is_red: bool) -> None:
+        draw_landscape_today_section(
+            draw, fonts, processed_events, now, is_red=is_red,
+            weather_data=weather_data, legend=legend,
+            collection_calendar_ids=waste_calendar_ids,
+        )
+        draw_landscape_week_section(
+            draw, fonts, processed_events, now, is_red=is_red,
+            weather_data=weather_data, collection_calendar_ids=waste_calendar_ids,
+        )
+        draw_landscape_upcoming_section(
+            draw, fonts, processed_events, now, is_red=is_red,
+        )
+
     # Create black layer
     black_img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    black_draw = ImageDraw.Draw(black_img)
+    _draw_all_sections(ImageDraw.Draw(black_img), is_red=False)
 
     # Create red layer
     red_img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    red_draw = ImageDraw.Draw(red_img)
+    _draw_all_sections(ImageDraw.Draw(red_img), is_red=True)
 
-    # Draw black layer sections
-    draw_landscape_today_section(
-        black_draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=False,
-        weather_data=weather_data,
-        legend=legend,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_week_section(
-        black_draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=False,
-        weather_data=weather_data,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_upcoming_section(
-        black_draw, fonts, processed_events, now, is_red=False
-    )
+    # Create composite preview (black + red on same image)
+    preview_img = Image.new("RGB", (width, height), COLORS["WHITE"])
+    preview_draw = ImageDraw.Draw(preview_img)
+    _draw_all_sections(preview_draw, is_red=False)
+    _draw_all_sections(preview_draw, is_red=True)
 
-    # Draw red layer sections
-    draw_landscape_today_section(
-        red_draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=True,
-        weather_data=weather_data,
-        legend=legend,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_week_section(
-        red_draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=True,
-        weather_data=weather_data,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_upcoming_section(red_draw, fonts, processed_events, now, is_red=True)
+    preview_buf = BytesIO()
+    preview_img.save(preview_buf, format="PNG")
+    preview_png = preview_buf.getvalue()
 
     # Convert to 1-bit bitmaps
     black_layer = image_to_1bit(black_img, is_red_layer=False)
@@ -158,7 +142,7 @@ def render_calendar(
     # Calculate ETag
     etag = calculate_etag(black_layer, red_layer)
 
-    return RenderedCalendar(black_layer, red_layer, etag, now)
+    return RenderedCalendar(black_layer, red_layer, preview_png, etag, now)
 
 
 def render_to_png(
@@ -168,85 +152,10 @@ def render_to_png(
     now: datetime,
     options: RenderOptions,
 ) -> bytes:
-    """Render calendar to PNG for preview.
-
-    Args:
-        calendar_events: Regular calendar events
-        waste_events: Waste collection events
-        weather_data: Weather forecast data
-        now: Current date/time
-        options: User configuration options
-
-    Returns:
-        PNG image data
-    """
-    width = DISPLAY["LANDSCAPE"]["width"]
-    height = DISPLAY["LANDSCAPE"]["height"]
-
-    # Load fonts
-    fonts = get_fonts(options)
-
-    # Process events (parse dates, convert icons)
-    processed_events = _process_events(calendar_events + waste_events)
-
-    # Get waste calendar IDs from options
-    waste_calendar_ids = options.get("waste_calendars", [])
-
-    # Create legend from regular calendars
-    legend = _create_legend(calendar_events)
-
-    # Create composite image
-    img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    draw = ImageDraw.Draw(img)
-
-    # Draw all sections on the same image for preview
-    draw_landscape_today_section(
-        draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=False,
-        weather_data=weather_data,
-        legend=legend,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_week_section(
-        draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=False,
-        weather_data=weather_data,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_upcoming_section(draw, fonts, processed_events, now, is_red=False)
-
-    # Draw red layer elements on top
-    draw_landscape_today_section(
-        draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=True,
-        weather_data=weather_data,
-        legend=legend,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_week_section(
-        draw,
-        fonts,
-        processed_events,
-        now,
-        is_red=True,
-        weather_data=weather_data,
-        collection_calendar_ids=waste_calendar_ids,
-    )
-    draw_landscape_upcoming_section(draw, fonts, processed_events, now, is_red=True)
-
-    # Convert to PNG
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    return buffer.getvalue()
+    """Render calendar to PNG for preview. Convenience wrapper around render_calendar."""
+    return render_calendar(
+        calendar_events, waste_events, weather_data, now, options
+    ).preview_png
 
 
 def _process_events(events: list[CalendarEvent]) -> list[CalendarEvent]:

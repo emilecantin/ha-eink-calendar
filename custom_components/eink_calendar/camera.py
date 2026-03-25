@@ -12,7 +12,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import CAMERA_NAME, CONF_DEVICE_NAME, CONF_MAC_ADDRESS, DOMAIN
 from .coordinator import EinkCalendarDataCoordinator
-from .renderer.renderer import render_to_png
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -45,32 +44,39 @@ class EinkCalendarPreviewCamera(Camera):
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
         self._cached_image: bytes | None = None
-        self._last_render_time: datetime | None = None
+        self._cached_data_timestamp: datetime | None = None
+
+    async def async_added_to_hass(self) -> None:
+        """Register coordinator listener to invalidate cache on data change."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        """Invalidate cached image when coordinator data changes."""
+        data = self.coordinator.data
+        new_ts = data.get("timestamp") if data else None
+        if new_ts != self._cached_data_timestamp:
+            self._cached_image = None
+        self.async_write_ha_state()
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        """Return calendar preview image."""
+        """Return calendar preview image (cached until data changes)."""
+        if self._cached_image is not None:
+            return self._cached_image
+
         try:
-            data = self.coordinator.data
-            if not data:
+            rendered = await self.coordinator.async_get_rendered()
+            if rendered is None:
                 _LOGGER.warning("No data available for camera")
-                return self._cached_image
+                return None
 
-            # Render to PNG
-            png_data = await self.hass.async_add_executor_job(
-                render_to_png,
-                data.get("calendar_events", []),
-                data.get("waste_events", []),
-                data.get("weather_data"),
-                data.get("timestamp", datetime.now()),
-                self.entry.options,
-            )
+            self._cached_image = rendered.preview_png
+            self._cached_data_timestamp = rendered.timestamp
 
-            self._cached_image = png_data
-            self._last_render_time = datetime.now()
-
-            return png_data
+            return rendered.preview_png
         except Exception as err:
             _LOGGER.error("Error rendering camera image: %s", err, exc_info=True)
-            return self._cached_image
+            return None

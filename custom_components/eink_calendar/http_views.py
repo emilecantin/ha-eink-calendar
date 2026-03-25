@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import hashlib
 import logging
+import time
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
@@ -21,9 +21,12 @@ class EinkCalendarAnnounceView(HomeAssistantView):
     name = "api:eink_calendar:announce"
     requires_auth = False
 
+    ANNOUNCE_COOLDOWN = 60  # seconds between new discovery flows per MAC
+
     def __init__(self, hass: HomeAssistant) -> None:
         """Initialize the view."""
         self.hass = hass
+        self._recent_announces: dict[str, float] = {}  # MAC → timestamp
 
     async def post(self, request: web.Request) -> web.Response:
         """Handle announce request from ESP32."""
@@ -75,6 +78,13 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                     and flow.get("context", {}).get("unique_id") == mac
                 ):
                     return self.json({"status": "pending"})
+
+            # Rate-limit new discovery flows per MAC
+            now = time.monotonic()
+            last_announce = self._recent_announces.get(mac, 0)
+            if now - last_announce < self.ANNOUNCE_COOLDOWN:
+                return self.json({"status": "pending"})
+            self._recent_announces[mac] = now
 
             # Start a new discovery flow
             await self.hass.config_entries.flow.async_init(
@@ -144,51 +154,35 @@ class EinkCalendarBitmapView(HomeAssistantView):
             if coordinator:
                 coordinator.record_checkin()
 
-            # Handle ETag check endpoint
-            if layer == "check":
-                coordinator = self.hass.data[DOMAIN].get(entry_id)
-                if not coordinator or not coordinator.data:
-                    return web.Response(text="No data", status=503)
-
-                etag = self._compute_etag(coordinator)
-                if_none_match = request.headers.get("If-None-Match")
-                if if_none_match and if_none_match == etag:
-                    return web.Response(status=304)
-
-                return web.Response(
-                    status=200,
-                    headers={"ETag": etag},
-                )
-
             # Validate layer name
-            valid_layers = ["black_top", "black_bottom", "red_top", "red_bottom"]
+            valid_layers = [
+                "check", "black_top", "black_bottom", "red_top", "red_bottom",
+            ]
             if layer not in valid_layers:
                 return web.Response(
                     text=f"Invalid layer. Must be one of: {', '.join(valid_layers)}",
                     status=400,
                 )
 
-            # Get coordinator
+            # Get coordinator and cached render
             coordinator = self.hass.data[DOMAIN].get(entry_id)
             if not coordinator:
                 return web.Response(text="Device not ready", status=503)
 
-            # Get the image data from the coordinator's cached render
-            # We need to trigger a render and get the specific layer
-            from .renderer.renderer import render_calendar
-
-            data = coordinator.data
-            if not data:
+            rendered = await coordinator.async_get_rendered()
+            if rendered is None:
                 return web.Response(text="No calendar data available", status=503)
 
-            rendered = await self.hass.async_add_executor_job(
-                render_calendar,
-                data.get("calendar_events", []),
-                data.get("waste_events", []),
-                data.get("weather_data"),
-                data.get("timestamp"),
-                entry.options,
-            )
+            etag = rendered.etag
+
+            # Check If-None-Match (applies to both check and layer requests)
+            if_none_match = request.headers.get("If-None-Match")
+            if if_none_match and if_none_match == etag:
+                return web.Response(status=304)
+
+            # ETag-only check endpoint
+            if layer == "check":
+                return web.Response(status=200, headers={"ETag": etag})
 
             # Get the appropriate chunk
             chunk = None
@@ -203,13 +197,6 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
             if chunk is None:
                 return web.Response(text="Failed to render", status=500)
-
-            etag = self._compute_etag(coordinator)
-
-            # Check If-None-Match
-            if_none_match = request.headers.get("If-None-Match")
-            if if_none_match and if_none_match == etag:
-                return web.Response(status=304)
 
             _LOGGER.debug(
                 "Serving bitmap %s for entry %s (%d bytes)",
@@ -230,13 +217,6 @@ class EinkCalendarBitmapView(HomeAssistantView):
         except Exception as err:
             _LOGGER.error("Error serving bitmap: %s", err, exc_info=True)
             return web.Response(text=f"Internal server error: {err}", status=500)
-
-    def _compute_etag(self, coordinator) -> str:
-        """Compute ETag from coordinator data timestamp."""
-        if coordinator.data and coordinator.data.get("timestamp"):
-            ts = str(coordinator.data["timestamp"])
-            return hashlib.md5(ts.encode()).hexdigest()
-        return ""
 
 
 def setup_http_views(hass: HomeAssistant) -> None:
