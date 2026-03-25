@@ -30,6 +30,7 @@ CONF_FONT_BOLD = "font_bold"
 CONF_MAC_ADDRESS = "mac_address"
 CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_REFRESH_INTERVAL = "refresh_interval"
+CONF_WASTE_ICON_MAP = "waste_icon_map"
 
 # Layout options
 LAYOUT_LANDSCAPE = "landscape"

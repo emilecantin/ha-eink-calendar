@@ -101,8 +101,7 @@ def draw_overflow_indicator(
     """
     # Format text based on language
     if language == "fr":
-        plural = count > 1
-        text = f"+{count} autre{'s' if plural else ''} événement{'s' if plural else ''}"
+        text = f"+{count} autre{'s' if count > 1 else ''}"
     else:
         text = f"+{count} more"
 

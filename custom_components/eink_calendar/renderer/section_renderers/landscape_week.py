@@ -20,7 +20,7 @@ def draw_landscape_week_section(
     today: datetime,
     is_red: bool,
     weather_data: WeatherData | None = None,
-    collection_calendar_ids: list[str] | None = None,
+    waste_events: list[CalendarEvent] | None = None,
     img: Image.Image | None = None,
 ) -> None:
     """Draw the Week section in landscape layout (6-day columns).
@@ -28,14 +28,14 @@ def draw_landscape_week_section(
     Args:
         draw: PIL ImageDraw object
         fonts: Font dictionary from font_loader
-        events: List of all calendar events
+        events: List of regular calendar events (no waste)
         today: Current date
         is_red: Whether drawing on red layer
         weather_data: Weather data from coordinator (optional)
-        collection_calendar_ids: List of waste collection calendar IDs
+        waste_events: Processed waste collection events
     """
-    if collection_calendar_ids is None:
-        collection_calendar_ids = []
+    if waste_events is None:
+        waste_events = []
 
     # Get image from draw context if not provided (needed for pasting icons)
     if img is None:
@@ -381,9 +381,7 @@ def draw_landscape_week_section(
             )
 
         # Collection icons (lower right corner)
-        collection_icons = get_collection_icons_for_day(
-            events, day, collection_calendar_ids
-        )
+        collection_icons = get_collection_icons_for_day(waste_events, day)
         if collection_icons and is_red:
             icon_size = 14
             icon_spacing = 3

@@ -97,33 +97,24 @@ def get_events_for_day(events: list[CalendarEvent], day: datetime) -> list[Event
 
 
 def get_collection_icons_for_day(
-    events: list[CalendarEvent], day: datetime, collection_calendar_ids: list[str]
+    waste_events: list[CalendarEvent], day: datetime,
 ) -> list[str]:
     """Get collection calendar icons for a specific day.
 
-    Returns icons from collection calendar entities for events on this day.
-    Uses the calendar entity's icon directly (no keyword matching).
-
     Args:
-        events: Array of calendar events
+        waste_events: Waste collection events only (already separated from regular events)
         day: Date to check for collection events
-        collection_calendar_ids: Array of calendar IDs that are waste collection calendars
 
     Returns:
         Array of icons for collections on this day (deduplicated)
     """
-    if not collection_calendar_ids:
+    if not waste_events:
         return []
 
     icons = []
     seen_icons = set()
 
-    # Find all collection events on this day
-    for event in events:
-        calendar_id = event.get("calendarId")
-        if not calendar_id or calendar_id not in collection_calendar_ids:
-            continue
-
+    for event in waste_events:
         # Check if event is on this day (all-day events only)
         if not event.get("allDay"):
             continue

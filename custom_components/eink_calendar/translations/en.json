@@ -42,6 +42,10 @@
           "font_medium": "Custom Medium Font Path (optional)",
           "font_bold": "Custom Bold Font Path (optional)"
         }
+      },
+      "waste_icons": {
+        "title": "Waste Collection Icons",
+        "description": "Assign an icon to each waste collection type found in your calendar."
       }
     }
   }

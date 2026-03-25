@@ -15,6 +15,7 @@ from homeassistant.util import dt as dt_util
 from .const import (
     CONF_CALENDARS,
     CONF_WASTE_CALENDARS,
+    CONF_WASTE_ICON_MAP,
     CONF_WEATHER_ENTITY,
     DOMAIN,
 )
@@ -97,24 +98,30 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             # Fetch weather data
             weather_data = await self._fetch_weather_data()
 
-            # If calendars are configured but we got no events, the calendar
+            # If data sources are configured but returned nothing, the
             # integrations likely haven't synced yet (common after HA restart).
-            # Use a shorter retry interval until we get events.
+            # Use a shorter retry interval until we get data.
             has_calendars = self._has_configured_calendars()
             has_events = bool(calendar_events or waste_events)
+            has_weather = weather_data is not None
+            expects_weather = bool(self.entry.options.get(CONF_WEATHER_ENTITY))
 
-            if has_calendars and not has_events:
+            missing_data = (has_calendars and not has_events) or (
+                expects_weather and not has_weather
+            )
+
+            if missing_data:
                 if self.update_interval != self.RETRY_INTERVAL:
                     _LOGGER.info(
-                        "No events from configured calendars — "
-                        "retrying in %s (calendars may still be syncing)",
+                        "Missing data from configured sources — "
+                        "retrying in %s (integrations may still be syncing)",
                         self.RETRY_INTERVAL,
                     )
                 self.update_interval = self.RETRY_INTERVAL
             else:
                 if self.update_interval != self.NORMAL_INTERVAL:
                     _LOGGER.info(
-                        "Calendar events loaded, resuming normal %s interval",
+                        "All data sources loaded, resuming normal %s interval",
                         self.NORMAL_INTERVAL,
                     )
                 self.update_interval = self.NORMAL_INTERVAL
@@ -198,6 +205,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         if not calendar_ids:
             return []
 
+        icon_map = self.entry.options.get(CONF_WASTE_ICON_MAP, {})
         all_events = []
 
         # Fetch 6 weeks of events
@@ -211,9 +219,6 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                 if not calendar_state:
                     _LOGGER.warning("Waste calendar %s not found", calendar_id)
                     continue
-
-                # Get calendar icon (the waste type icon)
-                calendar_icon = calendar_state.attributes.get("icon", "🗑️")
 
                 # Call calendar service to get events
                 events = await self.hass.services.async_call(
@@ -231,11 +236,17 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                 # Process events for this calendar
                 if calendar_id in events:
                     for event in events[calendar_id].get("events", []):
+                        summary = event.get("summary", "")
+                        # Look up icon by event summary, fall back to calendar entity icon
+                        calendar_icon = icon_map.get(
+                            summary,
+                            calendar_state.attributes.get("icon", "mdi:trash-can"),
+                        )
                         all_events.append(
                             {
                                 "calendar_id": calendar_id,
                                 "calendar_icon": calendar_icon,
-                                "summary": event.get("summary", ""),
+                                "summary": summary,
                                 "start": event.get("start"),
                                 "end": event.get("end"),
                             }

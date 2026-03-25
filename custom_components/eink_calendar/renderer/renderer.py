@@ -94,11 +94,9 @@ def render_calendar(
     # Load fonts
     fonts = get_fonts(options)
 
-    # Process events (parse dates, convert icons)
-    processed_events = _process_events(calendar_events + waste_events)
-
-    # Get waste calendar IDs from options
-    waste_calendar_ids = options.get("waste_calendars", [])
+    # Process events separately — waste events are only used for collection icons
+    processed_events = _process_events(calendar_events)
+    processed_waste = _process_events(waste_events)
 
     # Create legend from regular calendars
     legend = _create_legend(calendar_events)
@@ -107,11 +105,11 @@ def render_calendar(
         draw_landscape_today_section(
             draw, fonts, processed_events, now, is_red=is_red,
             weather_data=weather_data, legend=legend,
-            collection_calendar_ids=waste_calendar_ids,
+            waste_events=processed_waste,
         )
         draw_landscape_week_section(
             draw, fonts, processed_events, now, is_red=is_red,
-            weather_data=weather_data, collection_calendar_ids=waste_calendar_ids,
+            weather_data=weather_data, waste_events=processed_waste,
         )
         draw_landscape_upcoming_section(
             draw, fonts, processed_events, now, is_red=is_red,

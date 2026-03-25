@@ -23,6 +23,7 @@ from .const import (
     CONF_REFRESH_INTERVAL,
     CONF_SHOW_LEGEND,
     CONF_WASTE_CALENDARS,
+    CONF_WASTE_ICON_MAP,
     CONF_WEATHER_ENTITY,
     DEFAULT_LAYOUT,
     DEFAULT_NAME,
@@ -31,6 +32,12 @@ from .const import (
     DOMAIN,
     LAYOUT_LANDSCAPE,
 )
+
+DEFAULT_WASTE_ICONS: dict[str, str] = {
+    "Ordures": "mdi:trash-can",
+    "Recyclage": "mdi:recycle",
+    "Compost": "mdi:compost",
+}
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +67,7 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 options={
                     CONF_CALENDARS: [],
                     CONF_WASTE_CALENDARS: [],
+                    CONF_WASTE_ICON_MAP: {},
                     CONF_LAYOUT: DEFAULT_LAYOUT,
                     CONF_SHOW_LEGEND: DEFAULT_SHOW_LEGEND,
                     CONF_WEATHER_ENTITY: None,
@@ -138,6 +146,7 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                 options={
                     CONF_CALENDARS: user_input.get(CONF_CALENDARS, []),
                     CONF_WASTE_CALENDARS: user_input.get(CONF_WASTE_CALENDARS, []),
+                    CONF_WASTE_ICON_MAP: {},
                     CONF_LAYOUT: user_input.get(CONF_LAYOUT, DEFAULT_LAYOUT),
                     CONF_SHOW_LEGEND: user_input.get(
                         CONF_SHOW_LEGEND, DEFAULT_SHOW_LEGEND
@@ -233,16 +242,26 @@ class EinkCalendarOptionsFlow(config_entries.OptionsFlow):
     def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
         """Initialize options flow."""
         self._config_entry = config_entry
+        self._main_options: dict[str, Any] = {}
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
     ) -> FlowResult:
-        """Manage the options."""
+        """Step 1: Main options."""
         if user_input is not None:
             # Convert empty font paths to None
             for font_key in [CONF_FONT_REGULAR, CONF_FONT_MEDIUM, CONF_FONT_BOLD]:
                 if font_key in user_input and not user_input[font_key]:
                     user_input[font_key] = None
+
+            self._main_options = user_input
+
+            # If waste calendars are configured, go to icon mapping step
+            if user_input.get(CONF_WASTE_CALENDARS):
+                return await self.async_step_waste_icons()
+
+            # No waste calendars — save with empty icon map
+            user_input[CONF_WASTE_ICON_MAP] = {}
             return self.async_create_entry(title="", data=user_input)
 
         options = self._config_entry.options
@@ -330,4 +349,87 @@ class EinkCalendarOptionsFlow(config_entries.OptionsFlow):
                     ): str,
                 }
             ),
+        )
+
+    async def _fetch_waste_summaries(
+        self, calendar_ids: list[str]
+    ) -> set[str]:
+        """Fetch unique event summaries from waste calendars."""
+        from homeassistant.util import dt as dt_util
+        from datetime import timedelta
+
+        summaries: set[str] = set()
+        start_time = dt_util.start_of_local_day()
+        end_time = start_time + timedelta(weeks=6)
+
+        for calendar_id in calendar_ids:
+            try:
+                events = await self.hass.services.async_call(
+                    "calendar",
+                    "get_events",
+                    {
+                        "entity_id": calendar_id,
+                        "start_date_time": start_time.isoformat(),
+                        "end_date_time": end_time.isoformat(),
+                    },
+                    blocking=True,
+                    return_response=True,
+                )
+                if calendar_id in events:
+                    for event in events[calendar_id].get("events", []):
+                        summary = event.get("summary", "").strip()
+                        if summary:
+                            summaries.add(summary)
+            except Exception as err:
+                _LOGGER.warning(
+                    "Could not fetch waste events from %s: %s", calendar_id, err
+                )
+
+        return summaries
+
+    async def async_step_waste_icons(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Step 2: Assign icons to waste event types."""
+        if user_input is not None:
+            # Build icon map from form: icon_<summary> → mdi:icon
+            icon_map: dict[str, str] = {}
+            for key, value in user_input.items():
+                if key.startswith("icon_") and value:
+                    summary = key[5:]  # strip "icon_" prefix
+                    icon_map[summary] = value
+
+            self._main_options[CONF_WASTE_ICON_MAP] = icon_map
+            return self.async_create_entry(title="", data=self._main_options)
+
+        # Fetch unique summaries from the selected waste calendars
+        waste_ids = self._main_options.get(CONF_WASTE_CALENDARS, [])
+        summaries = await self._fetch_waste_summaries(waste_ids)
+
+        # Merge with any existing icon map keys (in case calendar is empty right now)
+        existing_map = self._config_entry.options.get(CONF_WASTE_ICON_MAP, {})
+        all_summaries = sorted(summaries | set(existing_map.keys()))
+
+        if not all_summaries:
+            # No summaries found — skip this step
+            self._main_options[CONF_WASTE_ICON_MAP] = {}
+            return self.async_create_entry(title="", data=self._main_options)
+
+        # Build form with one icon selector per summary
+        schema_dict: dict[Any, Any] = {}
+        for summary in all_summaries:
+            default_icon = (
+                existing_map.get(summary)
+                or DEFAULT_WASTE_ICONS.get(summary)
+                or "mdi:trash-can"
+            )
+            schema_dict[
+                vol.Optional(f"icon_{summary}", default=default_icon)
+            ] = selector.IconSelector(
+                selector.IconSelectorConfig(placeholder=default_icon)
+            )
+
+        return self.async_show_form(
+            step_id="waste_icons",
+            data_schema=vol.Schema(schema_dict),
         )

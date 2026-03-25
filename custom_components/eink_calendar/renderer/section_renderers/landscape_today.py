@@ -21,7 +21,7 @@ def draw_landscape_today_section(
     is_red: bool,
     weather_data: WeatherData | None = None,
     legend: list[dict[str, str]] | None = None,
-    collection_calendar_ids: list[str] | None = None,
+    waste_events: list[CalendarEvent] | None = None,
     img: Image.Image | None = None,
 ) -> None:
     """Draw the Today section in landscape layout (full-height left panel).
@@ -29,17 +29,17 @@ def draw_landscape_today_section(
     Args:
         draw: PIL ImageDraw object
         fonts: Font dictionary from font_loader
-        events: List of all calendar events
+        events: List of regular calendar events (no waste)
         today: Current date
         is_red: Whether drawing on red layer
         weather_data: Weather data from coordinator (optional)
         legend: List of legend items with icon/name (optional)
-        collection_calendar_ids: List of waste collection calendar IDs
+        waste_events: Processed waste collection events
     """
     if legend is None:
         legend = []
-    if collection_calendar_ids is None:
-        collection_calendar_ids = []
+    if waste_events is None:
+        waste_events = []
 
     # Get image from draw context if not provided (needed for pasting icons)
     if img is None:
@@ -361,9 +361,7 @@ def draw_landscape_today_section(
         )
 
     # Collection icons above legend
-    collection_icons = get_collection_icons_for_day(
-        events, today, collection_calendar_ids
-    )
+    collection_icons = get_collection_icons_for_day(waste_events, today)
     if collection_icons and is_red:
         icon_size = 18
         icon_spacing = 4

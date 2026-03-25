@@ -42,6 +42,10 @@
           "font_medium": "Chemin de police Medium personnalisée (optionnel)",
           "font_bold": "Chemin de police Bold personnalisée (optionnel)"
         }
+      },
+      "waste_icons": {
+        "title": "Icônes de collecte des déchets",
+        "description": "Assignez une icône à chaque type de collecte trouvé dans votre calendrier."
       }
     }
   }
