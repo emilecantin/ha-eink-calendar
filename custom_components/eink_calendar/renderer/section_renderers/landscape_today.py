@@ -102,7 +102,13 @@ def draw_landscape_today_section(
         draw.text((header_x, header_y + 36), date_text, fill=text_color, font=date_font)
 
         # Weather info on the right
+        # Try forecast for today; fall back to current conditions
         today_forecast = get_forecast_for_date(weather_data, today)
+        if not today_forecast and weather_data:
+            today_forecast = {
+                "condition": weather_data.get("condition"),
+                "temperature": weather_data.get("temperature"),
+            }
         if today_forecast:
             weather_right_edge = section_width - 15
             temp_font = fonts["bold"][20]

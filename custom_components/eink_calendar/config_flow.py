@@ -254,7 +254,10 @@ class EinkCalendarOptionsFlow(config_entries.OptionsFlow):
                 if font_key in user_input and not user_input[font_key]:
                     user_input[font_key] = None
 
-            self._main_options = user_input
+            # Preserve existing options not present in the form
+            merged = dict(self._config_entry.options)
+            merged.update(user_input)
+            self._main_options = merged
 
             # If waste calendars are configured, go to icon mapping step
             if user_input.get(CONF_WASTE_CALENDARS):

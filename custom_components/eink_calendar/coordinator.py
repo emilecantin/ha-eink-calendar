@@ -126,12 +126,28 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                     )
                 self.update_interval = self.NORMAL_INTERVAL
 
-            return {
+            result = {
                 "calendar_events": calendar_events,
                 "waste_events": waste_events,
                 "weather_data": weather_data,
                 "timestamp": now,
             }
+
+            # Pre-render so camera/image entities serve instantly
+            from .renderer.renderer import render_calendar
+
+            rendered = await self.hass.async_add_executor_job(
+                render_calendar,
+                calendar_events,
+                waste_events,
+                weather_data,
+                now,
+                self.entry.options,
+            )
+            self._cached_render = rendered
+            self._cached_render_timestamp = now
+
+            return result
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
@@ -264,6 +280,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Fetch weather forecast data."""
         weather_entity = self.entry.options.get(CONF_WEATHER_ENTITY)
         if not weather_entity:
+            _LOGGER.debug("No weather entity configured")
             return None
 
         try:
@@ -271,6 +288,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             if not weather_state:
                 _LOGGER.warning("Weather entity %s not found", weather_entity)
                 return None
+            _LOGGER.debug("Weather entity %s state: %s", weather_entity, weather_state.state)
 
             # In newer Home Assistant versions, forecast must be fetched via service call
             # Try to get forecast via service call first
@@ -295,6 +313,12 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                 # Fallback to attributes (for older HA versions)
                 forecast = weather_state.attributes.get("forecast", [])
 
+            _LOGGER.debug(
+                "Weather data: condition=%s, temp=%s, forecast_count=%d",
+                weather_state.state,
+                weather_state.attributes.get("temperature"),
+                len(forecast),
+            )
             return {
                 "condition": weather_state.state,
                 "temperature": weather_state.attributes.get("temperature"),
