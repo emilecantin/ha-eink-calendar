@@ -1,6 +1,10 @@
 """Event filtering utilities for E-Ink Calendar calendar rendering.
 
 Provides functions to filter and organize events for specific days.
+
+IMPORTANT: These functions expect events with INCLUSIVE end dates.
+All-day event end dates must be adjusted before reaching this module.
+See docs/calendar-event-handling.md for the iCal exclusive end date rule.
 """
 
 from datetime import datetime, time

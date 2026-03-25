@@ -1,8 +1,13 @@
-"""Main calendar renderer for E-Paper Calendar integration."""
+"""Main calendar renderer for E-Paper Calendar integration.
+
+All-day event end dates from HA are EXCLUSIVE per iCal/RFC 5545.
+The adjustment (subtract 1 day) is applied in _process_events().
+See docs/calendar-event-handling.md for the full explanation.
+"""
 
 import locale
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from io import BytesIO
 
 from dateutil import parser
@@ -286,6 +291,12 @@ def _process_events(events: list[CalendarEvent]) -> list[CalendarEvent]:
 
         # Determine if all-day event (no time component in string)
         all_day = "T" not in start_str
+
+        # All-day events: HA returns exclusive end dates per iCal/RFC 5545.
+        # Subtract one day to get the inclusive last day of the event.
+        # See docs/calendar-event-handling.md for full explanation.
+        if all_day:
+            end = end - timedelta(days=1)
 
         # Keep MDI icon string for PNG icon lookup
         calendar_icon = event.get("calendar_icon", "")

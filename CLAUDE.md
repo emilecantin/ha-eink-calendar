@@ -181,11 +181,13 @@ EPD_12in48B_Init();    // Initialize display controller
 
 `Paint_DrawRectangle(Xstart, Ystart, Xend, Yend, Color, DRAW_FILL, DOT_PIXEL)`
 
-### iCal Date Handling
+### iCal Date Handling (IMPORTANT — recurring source of bugs)
 
-All-day events use exclusive end dates:
-- Single-day event: start == end (don't subtract)
-- Multi-day event: last visible day = end_date - 1
+All-day event end dates from HA are **EXCLUSIVE** per iCal/RFC 5545. The fix
+(subtract 1 day) is applied once in `renderer.py:_process_events()`.
+
+**See `docs/calendar-event-handling.md` for the full specification, examples,
+and explanation of why this bug keeps recurring.**
 
 ### WiFiManager Setup Mode
 
