@@ -180,6 +180,9 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                     or calendar_state.attributes.get("icon")
                     or "mdi:calendar"
                 )
+                calendar_name = calendar_state.attributes.get("friendly_name") or (
+                    calendar_id.replace("calendar.", "").replace("_", " ").title()
+                )
 
                 # Call calendar service to get events
                 events = await self.hass.services.async_call(
@@ -201,6 +204,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                             {
                                 "calendar_id": calendar_id,
                                 "calendar_icon": calendar_icon,
+                                "calendar_name": calendar_name,
                                 "summary": event.get("summary", ""),
                                 "start": event.get("start"),
                                 "end": event.get("end"),

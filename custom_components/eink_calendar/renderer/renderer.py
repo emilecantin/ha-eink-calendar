@@ -248,8 +248,10 @@ def _create_legend(calendar_events: list[CalendarEvent]) -> list[dict[str, str]]
             if not icon:
                 icon = "mdi:calendar"
 
-            # Extract calendar name from ID (e.g., "calendar.personal" -> "Personal")
-            name = calendar_id.replace("calendar.", "").replace("_", " ").title()
+            # Use friendly name from coordinator, fall back to entity ID
+            name = event.get("calendar_name") or (
+                calendar_id.replace("calendar.", "").replace("_", " ").title()
+            )
 
             seen_calendars[calendar_id] = {"icon": icon, "name": name}
 
