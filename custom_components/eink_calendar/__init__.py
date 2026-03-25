@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -11,10 +10,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import (
-    CONF_CALENDARS,
     CONF_DEVICE_NAME,
     CONF_MAC_ADDRESS,
-    CONF_WASTE_CALENDARS,
     DOMAIN,
 )
 from .coordinator import EinkCalendarDataCoordinator
@@ -47,30 +44,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up E-Ink Calendar from a config entry."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Wait for calendar entities to be ready (race condition fix)
-    calendar_ids = entry.options.get(CONF_CALENDARS, [])
-    waste_calendar_ids = entry.options.get(CONF_WASTE_CALENDARS, [])
-    all_calendar_ids = calendar_ids + waste_calendar_ids
-
-    if all_calendar_ids:
-        _LOGGER.debug("Waiting for calendar entities to be ready: %s", all_calendar_ids)
-        for i in range(30):
-            all_found = all(hass.states.get(cal_id) for cal_id in all_calendar_ids)
-            if all_found:
-                _LOGGER.debug("All calendar entities ready after %d seconds", i)
-                break
-            if i == 29:
-                _LOGGER.warning(
-                    "Some calendar entities not ready after 30 seconds: %s",
-                    [
-                        cal_id
-                        for cal_id in all_calendar_ids
-                        if not hass.states.get(cal_id)
-                    ],
-                )
-            await asyncio.sleep(1)
-
     # Create data coordinator
+    # Note: if calendar integrations haven't synced yet after HA restart,
+    # the coordinator will get empty events and automatically retry every
+    # 30s until events appear (see coordinator.py RETRY_INTERVAL).
     coordinator = EinkCalendarDataCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
 

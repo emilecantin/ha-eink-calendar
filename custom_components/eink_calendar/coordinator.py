@@ -25,16 +25,26 @@ _LOGGER = logging.getLogger(__name__)
 class EinkCalendarDataCoordinator(DataUpdateCoordinator):
     """Class to manage fetching calendar and weather data."""
 
+    NORMAL_INTERVAL = timedelta(minutes=15)
+    RETRY_INTERVAL = timedelta(seconds=30)
+
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=timedelta(minutes=15),
+            update_interval=self.NORMAL_INTERVAL,
         )
         self.entry = entry
         self._last_render_day: datetime | None = None
+
+    def _has_configured_calendars(self) -> bool:
+        """Check if any calendars are configured."""
+        return bool(
+            self.entry.options.get(CONF_CALENDARS, [])
+            or self.entry.options.get(CONF_WASTE_CALENDARS, [])
+        )
 
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from calendars and weather."""
@@ -53,6 +63,28 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
             # Fetch weather data
             weather_data = await self._fetch_weather_data()
+
+            # If calendars are configured but we got no events, the calendar
+            # integrations likely haven't synced yet (common after HA restart).
+            # Use a shorter retry interval until we get events.
+            has_calendars = self._has_configured_calendars()
+            has_events = bool(calendar_events or waste_events)
+
+            if has_calendars and not has_events:
+                if self.update_interval != self.RETRY_INTERVAL:
+                    _LOGGER.info(
+                        "No events from configured calendars — "
+                        "retrying in %s (calendars may still be syncing)",
+                        self.RETRY_INTERVAL,
+                    )
+                self.update_interval = self.RETRY_INTERVAL
+            else:
+                if self.update_interval != self.NORMAL_INTERVAL:
+                    _LOGGER.info(
+                        "Calendar events loaded, resuming normal %s interval",
+                        self.NORMAL_INTERVAL,
+                    )
+                self.update_interval = self.NORMAL_INTERVAL
 
             return {
                 "calendar_events": calendar_events,
