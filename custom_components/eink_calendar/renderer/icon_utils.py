@@ -65,17 +65,19 @@ def _render_glyph(
     if not bbox:
         return Image.new("RGBA", (size, size), (0, 0, 0, 0))
 
-    # Render onto a canvas sized to the glyph
+    # Render glyph onto a tight canvas
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+    glyph = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(glyph)
     draw.fontmode = "1"  # 1-bit rendering, crisp for e-ink
     draw.text((-bbox[0], -bbox[1]), char, fill=color, font=font)
 
-    # Resize to exact target if needed (font metrics may differ slightly)
-    if img.size != (size, size):
-        img = img.resize((size, size), Image.LANCZOS)
+    # Center glyph in a square canvas (no stretching)
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    paste_x = (size - w) // 2
+    paste_y = (size - h) // 2
+    img.paste(glyph, (paste_x, paste_y), glyph)
 
     return img
 
