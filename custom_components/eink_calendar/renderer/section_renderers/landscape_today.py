@@ -222,9 +222,14 @@ def draw_landscape_today_section(
 
     # Get today's events
     today_events_with_indicators = get_events_for_day(events, today)
-    today_events_with_indicators.sort(
-        key=lambda e: e["event"].get("start") or datetime.min
-    )
+    # Sort: all-day events first, then by start time
+    # Use (allDay, date, naive_time) to avoid naive/aware datetime comparison
+    def _sort_key(e):
+        start = e["event"].get("start") or datetime.min
+        is_all_day = e["event"].get("allDay", False)
+        return (not is_all_day, start.date(), start.replace(tzinfo=None).time())
+
+    today_events_with_indicators.sort(key=_sort_key)
     today_events_with_indicators = today_events_with_indicators[:max_events]
 
     max_title_width = event_width - 10

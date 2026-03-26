@@ -95,8 +95,8 @@ def draw_landscape_upcoming_section(
         ) and compare_start >= compare_window_end:
             upcoming_events.append(event)
 
-    # Sort by start time
-    upcoming_events.sort(key=lambda e: e["start"])
+    # Sort by date (avoids naive vs aware datetime comparison errors)
+    upcoming_events.sort(key=lambda e: e["start"].date())
     upcoming_events = upcoming_events[:12]  # Max 12 events
 
     # Two-column layout
