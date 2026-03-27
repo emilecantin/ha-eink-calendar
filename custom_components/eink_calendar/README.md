@@ -1,165 +1,77 @@
-# E-Ink Calendar Integration
+# E-Ink Calendar — Home Assistant Integration
 
 Native Home Assistant integration for rendering calendars to e-paper displays.
 
 ## Installation
 
-### Manual Installation
+### HACS (Recommended)
 
-1. Copy the `custom_components/eink_calendar` directory to your Home Assistant `config/custom_components/` directory:
+[![Open your Home Assistant instance and open a repository inside the Home Assistant Community Store.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=emilecantin&repository=ha-eink-calendar&category=integration)
 
-```bash
-cd /path/to/your/homeassistant/config
-mkdir -p custom_components
-cp -r custom_components/eink_calendar custom_components/
-```
+### Manual
 
+1. Copy this `eink_calendar` directory to `config/custom_components/eink_calendar/`
 2. Restart Home Assistant
+3. Go to **Settings > Devices & Services > Add Integration**
+4. Search for "E-Ink Calendar"
 
-3. Go to **Settings → Devices & Services**
+## Configuration
 
-4. Click **+ Add Integration**
+All settings are configured through the HA UI. Each device can be configured independently.
 
-5. Search for "E-Ink Calendar" and click it
+| Option | Description | Default |
+|--------|-------------|---------|
+| Calendars | Calendar entities to display with full event details | — |
+| Waste Calendars | Calendar entities shown as icons only | — |
+| Language | Display language (Français / English) | French |
+| Layout | Landscape (recommended) or Portrait | Landscape |
+| Show Legend | Calendar icon legend at bottom of display | On |
+| Weather Entity | Weather entity for daily forecast | — |
+| Refresh Interval | How often ESP32 checks for updates (minutes) | 15 |
+| Custom Fonts | Optional paths to TTF fonts (Regular, Medium, Bold) | Bundled Inter |
 
-6. Follow the setup wizard:
-   - Enter a device name (e.g., "Kitchen Calendar")
-   - Click Submit
+After initial setup, change options via **Settings > Devices & Services > E-Ink Calendar > Configure**.
 
-7. Configure options:
-   - Select regular calendars to display
-   - Select waste collection calendars (if using Waste Collection Schedule integration)
-   - Choose layout (landscape recommended)
-   - Optionally select a weather entity
-   - Optionally specify custom font paths
+### Waste Calendar Icons
 
-## Features (MVP Version)
+When waste calendars are configured, a second configuration step lets you assign MDI icons to each waste type (detected from event summaries). These icons appear in the day columns on collection days.
 
-This is a minimal viable product for initial testing. Current features:
+## Entities
 
-- Multi-device support (multiple e-paper displays)
-- Calendar event fetching from HA calendars
-- Waste collection calendar support
-- Weather integration (optional)
-- Camera entity (preview)
-- Image entities (4 bitmap layers for ESP32)
-- ETag caching (via HA image proxy)
-- Custom font support
-- Configurable via UI
+Each device creates:
 
-## Entities Created
+- `camera.{name}_preview` — Full-color PNG preview
+- `image.{name}_black_layer_{top,bottom}` — Black bitmap layers for ESP32
+- `image.{name}_red_layer_{top,bottom}` — Red bitmap layers for ESP32
+- `sensor.{name}_last_update` — Last render timestamp
+- `sensor.{name}_last_checkin` — Last ESP32 check-in timestamp
 
-Each E-Ink Calendar device creates:
+## Services
 
-- `camera.{device_name}_preview` - Full-color PNG preview
-- `image.{device_name}_black_layer_top` - Top half black bitmap
-- `image.{device_name}_black_layer_bottom` - Bottom half black bitmap
-- `image.{device_name}_red_layer_top` - Top half red bitmap
-- `image.{device_name}_red_layer_bottom` - Bottom half red bitmap
-- `sensor.{device_name}_last_update` - Last render timestamp
+| Service | Description |
+|---------|-------------|
+| `eink_calendar.trigger_render` | Force a fresh render (clears cache, re-fetches data) |
 
-## ESP32 Integration
+## How It Works
 
-### Image URLs
-
-ESP32 devices fetch images via HA's image proxy:
-
-```cpp
-// Check ETag
-HEAD http://homeassistant.local:8123/api/image_proxy/image.kitchen_calendar_black_layer_top
-Authorization: Bearer YOUR_LONG_LIVED_TOKEN
-
-// Fetch images (if ETag changed)
-GET http://homeassistant.local:8123/api/image_proxy/image.kitchen_calendar_black_layer_top
-GET http://homeassistant.local:8123/api/image_proxy/image.kitchen_calendar_black_layer_bottom
-GET http://homeassistant.local:8123/api/image_proxy/image.kitchen_calendar_red_layer_top
-GET http://homeassistant.local:8123/api/image_proxy/image.kitchen_calendar_red_layer_bottom
-```
-
-HA automatically handles ETag caching and returns `304 Not Modified` when unchanged.
-
-## Testing the Integration
-
-1. **Check entities are created:**
-   - Go to **Developer Tools → States**
-   - Search for your device name
-   - Verify camera, image, and sensor entities exist
-
-2. **View the preview:**
-   - Go to **Settings → Devices & Services → E-Ink Calendar**
-   - Click on your device
-   - Click on the camera entity
-   - You should see a preview image
-
-3. **Test image endpoints:**
-   - Get a long-lived access token: **Profile → Long-Lived Access Tokens**
-   - Test in browser:
-     ```
-     http://homeassistant.local:8123/api/image_proxy/image.{device_name}_black_layer_top?token=YOUR_TOKEN
-     ```
-   - Should download binary data
-
-4. **Check logs:**
-   ```bash
-   # In Home Assistant container or logs
-   grep -i eink_calendar home-assistant.log
-   ```
-
-## Configuration Options
-
-### Regular Calendars
-Select which HA calendar entities to display with full event details (time, title, icon).
-
-### Waste Collection Calendars
-Select calendar entities that should display only icons (no event text). Works with [Waste Collection Schedule](https://github.com/mampfes/hacs_waste_collection_schedule) integration.
-
-### Layout
-- **Landscape** (recommended): 1304x984 - Today on left, week + upcoming on right
-- **Portrait**: 984x1304 - Not implemented in MVP
-
-### Weather Entity
-Optional weather entity for forecast display.
-
-### Custom Fonts
-Optional paths to custom TTF fonts (Regular, Medium, Bold). Leave blank to use bundled Inter fonts.
-
-Example:
-```
-/config/fonts/MyFont-Regular.ttf
-/config/fonts/MyFont-Medium.ttf
-/config/fonts/MyFont-Bold.ttf
-```
+1. **No polling** — The integration does not poll on a schedule
+2. **ESP32 triggers renders** — When the ESP32 checks in (`/check` endpoint), the integration fetches fresh calendar and weather data and renders the bitmap
+3. **ETag caching** — If the render hasn't changed, the ESP32 gets a 304 and skips the download
+4. **Pre-rendered cache** — Bitmaps are cached after render so the camera preview and image entities serve instantly
 
 ## Troubleshooting
 
-### Integration doesn't load
-- Check Home Assistant logs for errors
-- Ensure Pillow is installed: `pip list | grep -i pillow`
-- Restart Home Assistant completely
+### Integration fails to load after restart
+Calendar or weather entities may not be ready yet. The integration raises `ConfigEntryNotReady` and HA retries automatically — check logs for "will retry" messages.
 
-### No preview image
-- Check that calendars are selected in options
-- Check Developer Tools → States for camera entity state
-- Look for errors in logs
+### Preview shows but ESP32 doesn't update
+- Verify the ESP32 is checking in (watch `sensor.{name}_last_checkin`)
+- Check that the MAC address matches between the config entry and the ESP32's `X-MAC` header
+- Check HA logs for bitmap endpoint errors
 
-### ESP32 can't fetch images
-- Verify long-lived access token is correct
-- Check ESP32 can reach HA (ping test)
-- Test image URL in browser first
-- Check HA logs for authentication errors
+### Wrong language on display
+Change the **Language** option in device settings.
 
-### Fonts not loading
-- Check font file paths are absolute (e.g., `/config/fonts/...`)
-- Verify font files exist and are readable
-- Integration will fall back to bundled Inter fonts on error
-
-## Development Status
-
-**Current Version: 0.1.0 (MVP)**
-
-This is an initial minimal viable product for testing the integration architecture. The rendering currently shows placeholder content.
-
-## Support
-
-- Issues: https://github.com/emilecantin/ha-eink-calendar/issues
-- Documentation: https://github.com/emilecantin/ha-eink-calendar
+### Weather not showing
+- Some weather integrations don't include today in daily forecasts — the integration falls back to current conditions
+- Verify the weather entity has data in **Developer Tools > States**

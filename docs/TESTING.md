@@ -1,144 +1,75 @@
-# EPCAL Visual Regression Testing
+# Testing
 
-## Quick Start
+## Unit Tests
 
-Run all tests with a single command:
+The renderer unit tests are in `custom_components/eink_calendar/tests/`.
 
-```bash
-python3 scripts/run_tests.py
-```
-
-This will:
-1. Generate TypeScript reference renders (12 scenarios)
-2. Generate Python renders using standalone renderer (12 scenarios)
-3. Analyze pixel differences
-4. Generate HTML comparison report
-
-View results: `open comparison_tests/comparison_report.html`
-
-## Test Files
-
-### Main Entry Point
-- **`scripts/run_tests.py`** - Single command to run complete test suite
-
-### Core Files
-- **`tests/fixtures/test_data_library.py`** - Shared test scenarios used by both renderers
-- **`tests/fixtures/test_scenarios.json`** - JSON test scenarios for TypeScript/Python comparison
-- **`epcal_renderer/`** - Standalone Python renderer package (no HA dependencies)
-- **`test_with_standalone_renderer.py`** - Quick test of single scenario
-- **`regenerate_all_tests.py`** - Generate all Python test renders
-- **`analyze_differences.py`** - Compute pixel-level differences
-- **`create_comparison_report.py`** - Generate HTML side-by-side comparison
-
-### TypeScript Renderer
-- **`server/generate_test_renders.ts`** - Generate TypeScript reference renders
-- **`test_data_library.js`** - TypeScript version of test scenarios
-
-## Test Scenarios
-
-12 test scenarios covering different calendar features:
-
-1. **empty_calendar** - No events, no weather
-2. **single_event_tomorrow** - One event tomorrow
-3. **multiple_events_tomorrow** - Multiple events tomorrow
-4. **all_day_events** - All-day events with triangles
-5. **multi_day_event** - Event spanning multiple days
-6. **long_title_wrapping** - Long event titles that wrap
-7. **overflow_events** - More events than fit (overflow indicator)
-8. **weekend_event** - Weekend day with red background
-9. **waste_collection** - Waste collection icons
-10. **weather_forecast** - Weather data display
-11. **upcoming_events** - Events in upcoming section
-12. **full_calendar** - All features combined
-
-## Expected Results
-
-After running tests, you should see:
-
-- **1.7-2.6% pixel difference** - Normal (font rendering differences between Canvas and PIL)
-- **~5% for waste_collection** - Under investigation
-- **Borders match exactly** - x=15-16, y=15-16 for both renderers
-
-## Border Alignment Fix
-
-The Python renderer now matches TypeScript border alignment:
-
-- **Issue**: PIL draws borders INSIDE coordinates, Canvas draws CENTERED
-- **Fix**: Offset all border drawing by -1 pixel
-- **Result**: Pixel-perfect border alignment
-
-See `BORDER_FIX_RESULTS.md` for details.
-
-## Standalone Renderer
-
-The `epcal_renderer/` package can be used independently without Home Assistant:
-
-```python
-from epcal_renderer import render_to_png
-
-png_data = render_to_png(
-    calendar_events,
-    waste_events,
-    weather_data,
-    current_time,
-    options
-)
-```
-
-This allows:
-- Local testing without Docker
-- Use in other projects
-- Easier development and debugging
-
-## Development Workflow
-
-### Making Changes
-
-1. Edit renderer code in `epcal_renderer/`
-2. Run tests: `./run_tests.py`
-3. Review differences in HTML report
-4. Sync changes to HA integration:
-   ```bash
-   cp epcal_renderer/section_renderers/*.py custom_components/epcal/section_renderers/
-   # Fix imports for HA
-   cd custom_components/epcal/section_renderers
-   sed -i '' 's/from \.\.const import/from ...const import/g' landscape_*.py
-   sed -i '' 's/from \.\.event_filters import/from ..renderer.event_filters import/g' landscape_*.py
-   ```
-
-### Quick Single Test
-
-Test one scenario without regenerating everything:
+### Running Tests
 
 ```bash
-python3 test_with_standalone_renderer.py
+cd custom_components/eink_calendar/tests
+./run_tests.sh
 ```
 
-This tests `single_event_tomorrow` and verifies border alignment.
+The script automatically creates a Python venv (if needed) with pytest, Pillow, and python-dateutil.
 
-## Output
+### Filtering Tests
 
-All generated files go to `comparison_tests/`:
+Pass any pytest arguments through the script:
 
-- `*_typescript.png` - Reference renders from TypeScript
-- `*_python.png` - Renders from Python standalone renderer
-- `*_comparison.png` - Side-by-side comparison images
-- `*_diff.png` - Difference visualization (if generated)
-- `comparison_report.html` - Interactive HTML report
-
-## Troubleshooting
-
-### Font warnings
-```
-Failed to load bundled font: cannot open resource
-Using system default font
-```
-This is expected when running standalone renderer - it falls back to system fonts. Visual output is still correct for testing borders and layout.
-
-### TypeScript build fails
 ```bash
-cd server && npm install
+./run_tests.sh -k "weather"            # Only weather tests
+./run_tests.sh -k "process_events"     # Only event processing
+./run_tests.sh -k "collection_icons"   # Only collection icon tests
+./run_tests.sh --no-header -q          # Quiet output
 ```
 
-### Python imports fail
-Ensure you're running from the project root directory where `epcal_renderer/` exists.
+### Test Files
+
+| File | What it tests |
+|------|---------------|
+| `test_process_events.py` | Date parsing, all-day end date adjustment, calendar field passthrough, naive/aware mixing |
+| `test_event_filters.py` | `get_events_for_day` (single/multi-day, boundaries, exclusion), `get_collection_icons_for_day` |
+| `test_event_renderer.py` | `format_multi_day_time` (arrows), `sort_events_by_priority` (all-day first) |
+| `test_weather_utils.py` | `get_forecast_for_date` (matching, missing data, timezone handling) |
+| `test_renderer_integration.py` | Full `render_calendar` + `render_to_png` pipeline, legend creation |
+| `test_visual_regression.py` | Renders various scenarios to PNG for visual inspection |
+
+### Visual Regression
+
+The visual regression tests in `test_visual_regression.py` render 12 different scenarios to PNG files in `tests/visual_output/` and generate an HTML report. These are useful for checking rendering changes visually:
+
+```bash
+./run_tests.sh test_visual_regression.py -s  # -s shows print output with file paths
+open visual_output/visual_regression_report.html
+```
+
+### How Tests Work
+
+Tests import renderer modules directly (not through the HA integration). The `conftest.py` adds the `eink_calendar/` directory to `sys.path` so imports like `from renderer.event_filters import ...` work without needing Home Assistant installed.
+
+## Integration Testing
+
+Start a local HA instance with the component mounted:
+
+```bash
+docker-compose up
+```
+
+Then test the device flow:
+
+```bash
+# Test announce (simulates ESP32 first contact)
+curl -X POST http://localhost:8123/api/eink_calendar/announce \
+  -H "Content-Type: application/json" \
+  -d '{"mac":"AA:BB:CC:DD:EE:FF","name":"Test Calendar","firmware_version":"1.0.0"}'
+
+# After configuring the device in HA UI:
+# Test bitmap check
+curl http://localhost:8123/api/eink_calendar/bitmap/{entry_id}/check \
+  -H "X-MAC: AA:BB:CC:DD:EE:FF"
+
+# Test bitmap download
+curl http://localhost:8123/api/eink_calendar/bitmap/{entry_id}/black_top \
+  -H "X-MAC: AA:BB:CC:DD:EE:FF" -o black_top.bin
+```
