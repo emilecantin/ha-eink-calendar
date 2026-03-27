@@ -19,7 +19,8 @@ epcal/
 │   ├── image.py                # Bitmap image entities
 │   ├── sensor.py               # Last update sensor
 │   ├── http_views.py           # Announce API + bitmap serving
-│   ├── services.py             # trigger_render service
+│   ├── services.py             # trigger_render + upload_firmware services
+│   ├── firmware_manager.py     # Firmware binary storage for OTA
 │   └── renderer/               # Python calendar renderer
 └── server/                     # Node.js/Express server (reference impl)
     ├── index.ts                # Main server, endpoints, config UI
@@ -105,12 +106,14 @@ cd server && npx tsc --noEmit
 | `POST /api/eink_calendar/announce` | Device announce (no auth) |
 | `GET /api/eink_calendar/bitmap/{entry_id}/{layer}` | Bitmap serving (X-MAC auth) |
 | `GET /api/eink_calendar/bitmap/{entry_id}/check` | ETag check (X-MAC auth) |
+| `GET /api/eink_calendar/firmware/{entry_id}` | Firmware OTA binary (X-MAC auth) |
 
 ### Services
 
 | Service | Description |
 |---------|-------------|
 | `eink_calendar.trigger_render` | Force a manual re-render |
+| `eink_calendar.upload_firmware` | Upload firmware binary (`file_path`, `version`) |
 
 ### Testing
 

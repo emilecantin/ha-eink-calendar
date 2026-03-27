@@ -9,7 +9,7 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
-from .const import CONF_MAC_ADDRESS, DOMAIN
+from .const import CONF_MAC_ADDRESS, DOMAIN, FIRMWARE_MANAGER_KEY
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -252,9 +252,72 @@ class EinkCalendarBitmapView(HomeAssistantView):
             return web.Response(text=f"Internal server error: {err}", status=500)
 
 
+class EinkCalendarFirmwareView(HomeAssistantView):
+    """Serve firmware binary to ESP32 devices for OTA updates."""
+
+    url = "/api/eink_calendar/firmware/{entry_id}"
+    name = "api:eink_calendar:firmware"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the view."""
+        self.hass = hass
+
+    async def get(
+        self, request: web.Request, entry_id: str
+    ) -> web.Response:
+        """Serve firmware binary."""
+        try:
+            # Find the config entry
+            entry = self.hass.config_entries.async_get_entry(entry_id)
+            if not entry or entry.domain != DOMAIN:
+                return web.Response(text="Unknown device", status=404)
+
+            # Verify MAC address from request header
+            request_mac = request.headers.get("X-MAC", "").upper()
+            entry_mac = entry.data.get(CONF_MAC_ADDRESS, "")
+            if entry_mac and request_mac != entry_mac:
+                return web.Response(text="Unauthorized", status=403)
+
+            # Get firmware manager
+            fw_manager = self.hass.data.get(DOMAIN, {}).get(FIRMWARE_MANAGER_KEY)
+            if not fw_manager:
+                return web.Response(text="Firmware not available", status=404)
+
+            info = fw_manager.get_firmware_info()
+            fw_path = fw_manager.get_firmware_path()
+            if not info or not fw_path:
+                return web.Response(text="No firmware uploaded", status=404)
+
+            # Read firmware binary
+            firmware_data = await self.hass.async_add_executor_job(
+                _read_file, fw_path
+            )
+
+            return web.Response(
+                body=firmware_data,
+                content_type="application/octet-stream",
+                headers={
+                    "Content-Length": str(len(firmware_data)),
+                    "X-Firmware-Version": str(info["version"]),
+                },
+            )
+
+        except Exception as err:
+            _LOGGER.error("Error serving firmware: %s", err, exc_info=True)
+            return web.Response(text=f"Internal server error: {err}", status=500)
+
+
+def _read_file(path: str) -> bytes:
+    """Read a file (runs in executor)."""
+    with open(path, "rb") as f:
+        return f.read()
+
+
 def setup_http_views(hass: HomeAssistant) -> None:
     """Register HTTP views."""
     hass.http.register_view(EinkCalendarAnnounceView(hass))
     hass.http.register_view(EinkCalendarBitmapView(hass))
+    hass.http.register_view(EinkCalendarFirmwareView(hass))
 
     _LOGGER.info("E-Ink Calendar HTTP API views registered")
