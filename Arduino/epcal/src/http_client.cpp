@@ -35,6 +35,10 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
   response.entry_id[0] = '\0';
   response.refresh_interval = 15;
   response.http_code = 0;
+  response.ota.available = false;
+  response.ota.version[0] = '\0';
+  response.ota.url[0] = '\0';
+  response.ota.size = 0;
 
   HTTPClient http;
   String url = String(ha_url) + "/api/eink_calendar/announce";
@@ -105,6 +109,17 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
       if (rt) strncpy(response.endpoints.red_top, rt, sizeof(response.endpoints.red_top) - 1);
       if (rb) strncpy(response.endpoints.red_bottom, rb, sizeof(response.endpoints.red_bottom) - 1);
       if (ck) strncpy(response.endpoints.check, ck, sizeof(response.endpoints.check) - 1);
+    }
+
+    // Parse OTA firmware update info if present
+    JsonObject fw_update = doc["firmware_update"];
+    if (fw_update) {
+      response.ota.available = true;
+      const char* fwVer = fw_update["version"];
+      const char* fwUrl = fw_update["url"];
+      if (fwVer) strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1);
+      if (fwUrl) strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1);
+      response.ota.size = fw_update["size"] | 0;
     }
 
     Serial.printf("Announced: configured (entry_id: %s, refresh: %d min)\n",

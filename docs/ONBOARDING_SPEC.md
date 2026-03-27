@@ -266,9 +266,17 @@ Needs matching `strings.json` entry for the confirm step description.
        "red_top": "/api/eink_calendar/bitmap/abc123.../red_top",
        "red_bottom": "/api/eink_calendar/bitmap/abc123.../red_bottom",
        "check": "/api/eink_calendar/bitmap/abc123.../check"
+     },
+     "firmware_update": {
+       "version": "1.1.0",
+       "url": "/api/eink_calendar/firmware/abc123...",
+       "size": 1234567
      }
    }
    ```
+   The `firmware_update` field is **optional** — it is only included when a newer
+   firmware has been uploaded via the `upload_firmware` service and the device's
+   reported `firmware_version` differs from the stored version.
 3. ESP32 `announceAndConfigure()` processes:
    - Stores `entry_id` in `config.entry_id`
    - Converts `refresh_interval` to seconds → `config.refresh_interval`
@@ -449,6 +457,6 @@ This requires:
 1. **Confirmation step in discovery flow** — show "Device found, set up?" before full config form.
 2. **Render caching** — cache rendered bitmap in coordinator, don't re-render per request.
 3. **Device status tracking** — record last announce time, show "online/offline" in HA.
-4. **Firmware update via HA** — OTA update mechanism through the integration.
+4. **Firmware update via HA** — OTA announce protocol is implemented (announce response includes `firmware_update` when an update is available). Remaining: ESP32 firmware must implement the actual OTA download and flash logic.
 5. **Runtime QR code on "Waiting" screen** — link to HA integrations page for easy navigation.
 6. **Bilingual display messages** — locale selection in WiFiManager or from HA config.

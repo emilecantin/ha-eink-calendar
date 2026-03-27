@@ -347,6 +347,11 @@ bool tryAnnounce(const char* ha_url) {
     endpoints = resp.endpoints;
     endpoints_save(&endpoints);
 
+    if (resp.ota.available) {
+      Serial.printf("OTA update available: v%s (%u bytes) at %s\n",
+                    resp.ota.version, resp.ota.size, resp.ota.url);
+    }
+
     Serial.println("Device configured in Home Assistant!");
     return true;
   }
