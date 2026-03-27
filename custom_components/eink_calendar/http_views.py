@@ -171,6 +171,11 @@ class EinkCalendarBitmapView(HomeAssistantView):
             # gets an ETag based on the latest calendar/weather
             if layer == "check":
                 await coordinator.async_request_refresh()
+                if not coordinator.last_update_success:
+                    _LOGGER.warning(
+                        "Data refresh failed for entry %s — serving stale data",
+                        entry_id,
+                    )
 
             rendered = await coordinator.async_get_rendered()
             if rendered is None:
@@ -181,6 +186,13 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
             # Check If-None-Match (applies to both check and layer requests)
             if_none_match = request.headers.get("If-None-Match")
+            if layer == "check":
+                _LOGGER.info(
+                    "Check request: If-None-Match=%s, current ETag=%s, match=%s",
+                    if_none_match,
+                    etag,
+                    if_none_match == etag if if_none_match else "no-etag-sent",
+                )
             if if_none_match and if_none_match == etag:
                 return web.Response(
                     status=304,

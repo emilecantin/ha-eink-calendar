@@ -93,17 +93,34 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             # Fetch weather data
             weather_data = await self._fetch_weather_data()
 
-            # Fail if configured data sources aren't ready yet
+            # On the very first refresh (async_config_entry_first_refresh),
+            # HA converts UpdateFailed → ConfigEntryNotReady and retries setup.
+            # After that, we must NOT raise UpdateFailed for missing data —
+            # it silently keeps stale data/ETag, causing the ESP32 to get
+            # 304 Not Modified forever (display never updates).
+            # Instead, render with whatever data is available (possibly empty).
             has_calendars = bool(
                 self.entry.options.get(CONF_CALENDARS, [])
                 or self.entry.options.get(CONF_WASTE_CALENDARS, [])
             )
             expects_weather = bool(self.entry.options.get(CONF_WEATHER_ENTITY))
 
-            if has_calendars and not (calendar_events or waste_events):
-                raise UpdateFailed("Calendar entities not ready yet")
-            if expects_weather and weather_data is None:
-                raise UpdateFailed("Weather entity not ready yet")
+            if self.data is None:
+                # First refresh — fail so HA retries setup
+                if has_calendars and not (calendar_events or waste_events):
+                    raise UpdateFailed("Calendar entities not ready yet")
+                if expects_weather and weather_data is None:
+                    raise UpdateFailed("Weather entity not ready yet")
+            else:
+                # Subsequent refreshes — log warnings but don't fail
+                if has_calendars and not (calendar_events or waste_events):
+                    _LOGGER.warning(
+                        "No calendar events returned — rendering with empty data"
+                    )
+                if expects_weather and weather_data is None:
+                    _LOGGER.warning(
+                        "Weather entity not available — rendering without weather"
+                    )
 
             result = {
                 "calendar_events": calendar_events,
