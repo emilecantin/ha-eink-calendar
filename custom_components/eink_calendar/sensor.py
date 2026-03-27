@@ -34,7 +34,7 @@ async def async_setup_entry(
 
 
 class EinkCalendarLastUpdateSensor(SensorEntity):
-    """Sensor showing last render timestamp."""
+    """Sensor showing when the display image last changed."""
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
@@ -49,12 +49,20 @@ class EinkCalendarLastUpdateSensor(SensorEntity):
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
 
+    async def async_added_to_hass(self) -> None:
+        """Register listener when entity is added."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
     @property
     def native_value(self) -> datetime | None:
-        """Return the timestamp."""
-        if self.coordinator.data:
-            return self.coordinator.data.get("timestamp")
-        return None
+        """Return the timestamp of the last image change."""
+        return self.coordinator.last_image_change
 
 
 class EinkCalendarLastCheckinSensor(SensorEntity):

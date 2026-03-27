@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
@@ -22,7 +23,7 @@ from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.CAMERA, Platform.IMAGE, Platform.SENSOR]
+PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.CAMERA, Platform.IMAGE, Platform.SENSOR]
 
 
 def ensure_http_views(hass: HomeAssistant) -> None:
@@ -38,10 +39,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the E-Ink Calendar integration (called before config entries)."""
     hass.data.setdefault(DOMAIN, {})
 
-    # Initialize firmware manager (stores binaries in HA config dir)
+    # Initialize firmware manager (serves binary bundled with the integration)
     if FIRMWARE_MANAGER_KEY not in hass.data[DOMAIN]:
+        integration_dir = os.path.dirname(__file__)
         hass.data[DOMAIN][FIRMWARE_MANAGER_KEY] = FirmwareManager(
-            hass.config.config_dir
+            integration_dir
         )
 
     # Register HTTP views early so the announce endpoint is available

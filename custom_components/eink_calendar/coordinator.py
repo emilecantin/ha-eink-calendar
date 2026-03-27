@@ -37,9 +37,12 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self._last_render_day: datetime | None = None
         self.last_checkin: datetime | None = None
+        self.last_image_change: datetime | None = None
         self.firmware_version: str = "unknown"
         self._cached_render = None
         self._cached_render_timestamp: datetime | None = None
+        self._last_etag: str | None = None
+        self._force_refresh: bool = False
 
     def record_checkin(self, firmware_version: str | None = None) -> None:
         """Record a device check-in and notify listeners (sensors)."""
@@ -52,6 +55,11 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Clear the cached render so the next request triggers a fresh render."""
         self._cached_render = None
         self._cached_render_timestamp = None
+
+    def force_refresh(self) -> None:
+        """Force the ESP32 to re-download bitmaps on the next check-in."""
+        self._force_refresh = True
+        self.invalidate_render_cache()
 
     async def async_get_rendered(self):
         """Get cached rendered calendar, re-rendering only when data changes."""
@@ -76,6 +84,12 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
         self._cached_render = rendered
         self._cached_render_timestamp = data_ts
+
+        # Track when the image actually changes
+        if rendered and rendered.etag != self._last_etag:
+            self._last_etag = rendered.etag
+            self.last_image_change = dt_util.now()
+
         return rendered
 
     async def _async_update_data(self) -> dict[str, Any]:
@@ -146,6 +160,9 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                 )
                 self._cached_render = rendered
                 self._cached_render_timestamp = now
+                if rendered and rendered.etag != self._last_etag:
+                    self._last_etag = rendered.etag
+                    self.last_image_change = dt_util.now()
             except Exception as render_err:
                 _LOGGER.error("Pre-render failed: %s", render_err, exc_info=True)
 

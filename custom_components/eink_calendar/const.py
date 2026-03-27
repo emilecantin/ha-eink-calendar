@@ -41,7 +41,6 @@ LAYOUT_PORTRAIT = "portrait"
 
 # Services
 SERVICE_REFRESH = "refresh"
-SERVICE_UPLOAD_FIRMWARE = "upload_firmware"
 
 # Firmware
 FIRMWARE_MANAGER_KEY = "firmware_manager"

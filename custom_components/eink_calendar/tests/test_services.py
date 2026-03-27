@@ -71,9 +71,9 @@ class TestTriggerRender:
         # Call it
         asyncio.run(handler(MagicMock()))
 
-        coord_a.invalidate_render_cache.assert_called_once()
+        coord_a.force_refresh.assert_called_once()
         coord_a.async_refresh.assert_awaited_once()
-        coord_b.invalidate_render_cache.assert_called_once()
+        coord_b.force_refresh.assert_called_once()
         coord_b.async_refresh.assert_awaited_once()
 
     def test_skips_non_coordinator_entries(self):

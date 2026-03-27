@@ -14,35 +14,26 @@ void display_clear() {
 }
 
 void display_send_black1(const uint8_t* data) {
-  DEV_ModuleInit();  // Re-init SPI after WiFi download
   EPD_12in48B_SendBlack1((UBYTE*)data);
 }
 
 void display_send_black2(const uint8_t* data) {
-  DEV_ModuleInit();
   EPD_12in48B_SendBlack2((UBYTE*)data);
 }
 
 void display_send_red1(const uint8_t* data) {
-  DEV_ModuleInit();
   EPD_12in48B_SendRed1((UBYTE*)data);
 }
 
 void display_send_red2(const uint8_t* data) {
-  DEV_ModuleInit();
   EPD_12in48B_SendRed2((UBYTE*)data);
 }
 
 void display_refresh() {
-  // Re-init GPIO/SPI pins — WiFi operations may have reset them
-  // (same pattern as display_sleep and display_show_message)
-  DEV_ModuleInit();
   EPD_12in48B_TurnOnDisplay();
 }
 
 void display_sleep() {
-  // Re-init GPIO pins in case WiFi operations reset them
-  DEV_ModuleInit();
   EPD_12in48B_Sleep();
 }
 

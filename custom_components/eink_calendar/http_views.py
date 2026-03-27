@@ -214,6 +214,11 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 fw_version = request.headers.get("X-Firmware-Version", "")
                 image_changed = not (if_none_match and if_none_match == etag)
 
+                # Force refresh overrides ETag match
+                if coordinator._force_refresh:
+                    image_changed = True
+                    coordinator._force_refresh = False
+
                 _LOGGER.debug(
                     "Check request: If-None-Match=%s, ETag=%s, FW=%s, image_changed=%s",
                     if_none_match, etag, fw_version, image_changed,

@@ -13,6 +13,7 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
+#include <SPIFFS.h>
 #include "config.h"
 #include "http_client.h"
 #include "display.h"
@@ -34,8 +35,7 @@ int Version = 1;
 // Announce polling interval when waiting for HA configuration (ms)
 #define ANNOUNCE_POLL_INTERVAL 30000
 
-// Device info
-#define FIRMWARE_VERSION "1.1.0"
+// Device info — FIRMWARE_VERSION is injected by PlatformIO from firmware.version
 #define DEVICE_NAME_PREFIX "EinkCal"
 
 // WiFiManager custom parameters (shown on the advanced "Setup" page)
@@ -698,7 +698,7 @@ bool updateCalendar() {
   // Calendar has changed, download all chunks
   Serial.println("Calendar changed, downloading...");
 
-  // Allocate buffer for chunks
+  // Allocate single buffer for download+send
   chunk_buffer = (uint8_t*)malloc(CHUNK_BUFFER_SIZE);
   if (!chunk_buffer) {
     Serial.println("Failed to allocate chunk buffer!");
@@ -707,72 +707,83 @@ bool updateCalendar() {
     return false;
   }
 
-  // Initialize display
-  display_init();
+  if (!SPIFFS.begin(true)) {
+    Serial.println("SPIFFS mount failed!");
+    free(chunk_buffer);
+    return false;
+  }
 
   bool success = true;
   const char* failedEndpoint = NULL;
 
-  // Download and send black layer chunk 1
-  if (success) {
-    FetchResponse resp = http_fetch_chunk(config.ha_url, endpoints.black_top,
+  const char* chunk_endpoints[] = {
+    endpoints.black_top, endpoints.black_bottom,
+    endpoints.red_top,   endpoints.red_bottom,
+  };
+  const char* chunk_files[] = {
+    "/bk1.bin", "/bk2.bin", "/rd1.bin", "/rd2.bin",
+  };
+
+  // --- Phase 1: Download all chunks to SPIFFS ---
+
+  for (int i = 0; i < 4 && success; i++) {
+    FetchResponse resp = http_fetch_chunk(config.ha_url, chunk_endpoints[i],
                                           "", mac.c_str(), chunk_buffer, CHUNK_BUFFER_SIZE);
-    if (resp.result == FETCH_OK) {
-      display_send_black1(chunk_buffer);
-      if (resp.new_etag[0] != '\0') {
-        strncpy(cache.etag, resp.new_etag, sizeof(cache.etag) - 1);
-      }
-    } else {
+    if (resp.result != FETCH_OK) {
       success = false;
-      failedEndpoint = endpoints.black_top;
+      failedEndpoint = chunk_endpoints[i];
+      break;
     }
+    if (i == 0 && resp.new_etag[0] != '\0') {
+      strncpy(cache.etag, resp.new_etag, sizeof(cache.etag) - 1);
+    }
+    File f = SPIFFS.open(chunk_files[i], FILE_WRITE);
+    if (!f || f.write(chunk_buffer, CHUNK_BUFFER_SIZE) != CHUNK_BUFFER_SIZE) {
+      Serial.printf("SPIFFS write failed: %s\n", chunk_files[i]);
+      if (f) f.close();
+      success = false;
+      failedEndpoint = chunk_endpoints[i];
+      break;
+    }
+    f.close();
+    esp_task_wdt_reset();
   }
 
-  esp_task_wdt_reset();
-
-  // Download and send black layer chunk 2
-  if (success) {
-    FetchResponse resp = http_fetch_chunk(config.ha_url, endpoints.black_bottom,
-                                          "", mac.c_str(), chunk_buffer, CHUNK_BUFFER_SIZE);
-    if (resp.result == FETCH_OK) {
-      display_send_black2(chunk_buffer);
-    } else {
-      success = false;
-      failedEndpoint = endpoints.black_bottom;
-    }
+  if (!success) {
+    Serial.printf("Download failed for %s\n", failedEndpoint);
+    free(chunk_buffer);
+    SPIFFS.end();
+    display_show_message("Download failed", "Retrying in 60 seconds...");
+    display_sleep();
+    return false;
   }
 
-  esp_task_wdt_reset();
+  // --- Phase 2: Init display, read chunks from SPIFFS, send ---
 
-  // Download and send red layer chunk 1
-  if (success) {
-    FetchResponse resp = http_fetch_chunk(config.ha_url, endpoints.red_top,
-                                          "", mac.c_str(), chunk_buffer, CHUNK_BUFFER_SIZE);
-    if (resp.result == FETCH_OK) {
-      display_send_red1(chunk_buffer);
-    } else {
+  display_init();
+
+  typedef void (*SendFunc)(const uint8_t*);
+  SendFunc send_funcs[] = {
+    display_send_black1, display_send_black2,
+    display_send_red1,   display_send_red2,
+  };
+
+  for (int i = 0; i < 4 && success; i++) {
+    File f = SPIFFS.open(chunk_files[i], FILE_READ);
+    if (!f || f.read(chunk_buffer, CHUNK_BUFFER_SIZE) != CHUNK_BUFFER_SIZE) {
+      Serial.printf("SPIFFS read failed: %s\n", chunk_files[i]);
+      if (f) f.close();
       success = false;
-      failedEndpoint = endpoints.red_top;
+      break;
     }
+    f.close();
+    send_funcs[i](chunk_buffer);
+    esp_task_wdt_reset();
   }
 
-  esp_task_wdt_reset();
-
-  // Download and send red layer chunk 2
-  if (success) {
-    FetchResponse resp = http_fetch_chunk(config.ha_url, endpoints.red_bottom,
-                                          "", mac.c_str(), chunk_buffer, CHUNK_BUFFER_SIZE);
-    if (resp.result == FETCH_OK) {
-      display_send_red2(chunk_buffer);
-    } else {
-      success = false;
-      failedEndpoint = endpoints.red_bottom;
-    }
-  }
-
-  // Free buffer
   free(chunk_buffer);
   chunk_buffer = NULL;
+  SPIFFS.end();
 
   if (success) {
     Serial.println("Refreshing display...");
@@ -783,8 +794,7 @@ bool updateCalendar() {
 
     Serial.println("Display updated successfully!");
   } else {
-    Serial.printf("Download failed for %s\n", failedEndpoint);
-    display_show_message("Download failed", "Retrying in 60 seconds...");
+    Serial.println("SPIFFS read failed during display update");
   }
 
   display_sleep();
