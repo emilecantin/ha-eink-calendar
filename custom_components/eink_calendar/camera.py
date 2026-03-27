@@ -58,7 +58,7 @@ class EinkCalendarPreviewCamera(Camera):
         new_ts = data.get("timestamp") if data else None
         if new_ts != self._cached_data_timestamp:
             self._cached_image = None
-        self.async_write_ha_state()
+            self.async_write_ha_state()
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None

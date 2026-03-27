@@ -48,6 +48,7 @@ class EinkCalendarLastUpdateSensor(SensorEntity):
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
+        self._last_written_value: datetime | None = None
 
     async def async_added_to_hass(self) -> None:
         """Register listener when entity is added."""
@@ -57,7 +58,10 @@ class EinkCalendarLastUpdateSensor(SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
+        current = self.coordinator.last_image_change
+        if current != self._last_written_value:
+            self._last_written_value = current
+            self.async_write_ha_state()
 
     @property
     def native_value(self) -> datetime | None:
@@ -81,6 +85,7 @@ class EinkCalendarLastCheckinSensor(SensorEntity):
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
+        self._last_written_value: datetime | None = None
 
     async def async_added_to_hass(self) -> None:
         """Register listener when entity is added."""
@@ -90,7 +95,10 @@ class EinkCalendarLastCheckinSensor(SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
+        current = self.coordinator.last_checkin
+        if current != self._last_written_value:
+            self._last_written_value = current
+            self.async_write_ha_state()
 
     @property
     def native_value(self) -> datetime | None:
@@ -113,6 +121,7 @@ class EinkCalendarFirmwareVersionSensor(SensorEntity):
         self._attr_device_info = {
             "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
         }
+        self._last_written_value: str | None = None
 
     async def async_added_to_hass(self) -> None:
         """Register listener when entity is added."""
@@ -122,7 +131,10 @@ class EinkCalendarFirmwareVersionSensor(SensorEntity):
 
     def _handle_coordinator_update(self) -> None:
         """Handle updated data from the coordinator."""
-        self.async_write_ha_state()
+        current = self.coordinator.firmware_version
+        if current != self._last_written_value:
+            self._last_written_value = current
+            self.async_write_ha_state()
 
     @property
     def native_value(self) -> str:
