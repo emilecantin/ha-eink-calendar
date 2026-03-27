@@ -178,14 +178,6 @@ class EinkCalendarBitmapView(HomeAssistantView):
             if not coordinator:
                 return web.Response(text="Device not ready", status=503)
 
-            # Get firmware version from header (sent on check requests)
-            fw_version = request.headers.get("X-Firmware-Version", "")
-
-            # Record device check-in with firmware version
-            coordinator.record_checkin(
-                firmware_version=fw_version if fw_version else None
-            )
-
             # Validate layer name
             valid_layers = [
                 "check", "black_top", "black_bottom", "red_top", "red_bottom",
@@ -196,9 +188,12 @@ class EinkCalendarBitmapView(HomeAssistantView):
                     status=400,
                 )
 
-            # On check requests, refresh data first so the ESP32
-            # gets an ETag based on the latest calendar/weather
+            # On check requests, record check-in and refresh data
             if layer == "check":
+                fw_version = request.headers.get("X-Firmware-Version", "")
+                coordinator.record_checkin(
+                    firmware_version=fw_version if fw_version else None
+                )
                 await coordinator.async_request_refresh()
                 if not coordinator.last_update_success:
                     _LOGGER.warning(
