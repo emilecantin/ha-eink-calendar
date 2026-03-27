@@ -59,13 +59,16 @@ class TestCoordinatorFirmwareTracking:
         coord.record_checkin(firmware_version="1.1.0")
         assert coord.firmware_version == "1.1.0"
 
-    def test_record_checkin_notifies_listeners(self):
-        """Check-in with firmware version should notify listeners once."""
+    def test_record_checkin_notifies_checkin_listeners(self):
+        """Check-in should notify on_checkin listeners, not coordinator listeners."""
         coord = make_coordinator()
-        callback = MagicMock()
-        coord.async_add_listener(callback)
+        checkin_cb = MagicMock()
+        coordinator_cb = MagicMock()
+        coord.on_checkin(checkin_cb)
+        coord.async_add_listener(coordinator_cb)
         coord.record_checkin(firmware_version="1.1.0")
-        callback.assert_called_once()
+        checkin_cb.assert_called_once()
+        coordinator_cb.assert_not_called()
 
 
 class TestFirmwareVersionSensor:

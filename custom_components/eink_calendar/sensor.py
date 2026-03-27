@@ -33,110 +33,89 @@ async def async_setup_entry(
     )
 
 
+def _device_identifiers(entry: ConfigEntry) -> set:
+    mac = entry.data.get(CONF_MAC_ADDRESS)
+    return {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)}
+
+
 class EinkCalendarLastUpdateSensor(SensorEntity):
-    """Sensor showing when the display image last changed."""
+    """Sensor showing when the display image last changed.
+
+    Listens to coordinator updates (render path sets last_image_change),
+    but only writes state when the value actually changes.
+    """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
 
     def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
         self.coordinator = coordinator
-        self.entry = entry
         self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} {SENSOR_LAST_UPDATE_NAME.replace('_', ' ').title()}"
         self._attr_unique_id = f"{entry.entry_id}_{SENSOR_LAST_UPDATE_NAME}"
-        mac = entry.data.get(CONF_MAC_ADDRESS)
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
-        }
-        self._last_written_value: datetime | None = None
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
+        self._last_written: datetime | None = None
 
     async def async_added_to_hass(self) -> None:
-        """Register listener when entity is added."""
         self.async_on_remove(
             self.coordinator.async_add_listener(self._handle_coordinator_update)
         )
 
     def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
         current = self.coordinator.last_image_change
-        if current != self._last_written_value:
-            self._last_written_value = current
+        if current != self._last_written:
+            self._last_written = current
             self.async_write_ha_state()
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the timestamp of the last image change."""
         return self.coordinator.last_image_change
 
 
 class EinkCalendarLastCheckinSensor(SensorEntity):
-    """Sensor showing last time the ESP32 checked in."""
+    """Sensor showing last time the ESP32 checked in.
+
+    Only updates on actual device check-ins, not coordinator data refreshes.
+    """
 
     _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_icon = "mdi:access-point-check"
 
     def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
         self.coordinator = coordinator
-        self.entry = entry
         self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Last Check-in"
         self._attr_unique_id = f"{entry.entry_id}_{SENSOR_LAST_CHECKIN_NAME}"
-        mac = entry.data.get(CONF_MAC_ADDRESS)
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
-        }
-        self._last_written_value: datetime | None = None
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
 
     async def async_added_to_hass(self) -> None:
-        """Register listener when entity is added."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.coordinator.on_checkin(self._handle_checkin)
 
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        current = self.coordinator.last_checkin
-        if current != self._last_written_value:
-            self._last_written_value = current
-            self.async_write_ha_state()
+    def _handle_checkin(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> datetime | None:
-        """Return the last check-in timestamp."""
         return self.coordinator.last_checkin
 
 
 class EinkCalendarFirmwareVersionSensor(SensorEntity):
-    """Sensor showing the ESP32's firmware version."""
+    """Sensor showing the ESP32's firmware version.
+
+    Only updates on actual device check-ins, not coordinator data refreshes.
+    """
 
     _attr_icon = "mdi:chip"
 
     def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
-        """Initialize the sensor."""
         self.coordinator = coordinator
-        self.entry = entry
         self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Firmware Version"
         self._attr_unique_id = f"{entry.entry_id}_{SENSOR_FIRMWARE_VERSION_NAME}"
-        mac = entry.data.get(CONF_MAC_ADDRESS)
-        self._attr_device_info = {
-            "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
-        }
-        self._last_written_value: str | None = None
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
 
     async def async_added_to_hass(self) -> None:
-        """Register listener when entity is added."""
-        self.async_on_remove(
-            self.coordinator.async_add_listener(self._handle_coordinator_update)
-        )
+        self.coordinator.on_checkin(self._handle_checkin)
 
-    def _handle_coordinator_update(self) -> None:
-        """Handle updated data from the coordinator."""
-        current = self.coordinator.firmware_version
-        if current != self._last_written_value:
-            self._last_written_value = current
-            self.async_write_ha_state()
+    def _handle_checkin(self) -> None:
+        self.async_write_ha_state()
 
     @property
     def native_value(self) -> str:
-        """Return the firmware version string."""
         return self.coordinator.firmware_version
