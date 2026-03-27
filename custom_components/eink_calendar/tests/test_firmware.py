@@ -71,6 +71,11 @@ class TestFirmwareManager:
         ota = self.manager.build_ota_info("1.0.0", "entry123")
         assert ota is None
 
+    def test_no_ota_when_device_is_newer(self):
+        _make_integration_dir(self.tmpdir, "1.0.0", b"\x00" * 5000)
+        ota = self.manager.build_ota_info("1.1.0", "entry123")
+        assert ota is None
+
     def test_no_ota_when_no_firmware(self):
         _make_integration_dir(self.tmpdir, "1.0.0")  # no firmware.bin
         ota = self.manager.build_ota_info("1.0.0", "entry123")

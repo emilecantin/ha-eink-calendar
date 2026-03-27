@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
+from typing import Tuple
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -53,12 +54,24 @@ class FirmwareManager:
             return bin_path
         return None
 
+    @staticmethod
+    def _parse_version(version: str) -> Tuple[int, ...]:
+        """Parse a semver string into a tuple of ints for comparison."""
+        try:
+            return tuple(int(x) for x in version.split("."))
+        except (ValueError, AttributeError):
+            return (0,)
+
     def build_ota_info(
         self, device_version: str, entry_id: str
     ) -> dict[str, str | int] | None:
-        """Build OTA update info for check response, or None if no update needed."""
+        """Build OTA update info if bundled firmware is newer than device."""
         info = self.get_firmware_info()
-        if info is None or info["version"] == device_version:
+        if info is None:
+            return None
+        bundled = self._parse_version(info["version"])
+        device = self._parse_version(device_version)
+        if bundled <= device:
             return None
         return {
             "version": info["version"],
