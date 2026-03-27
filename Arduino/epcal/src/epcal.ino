@@ -53,6 +53,10 @@ uint8_t* chunk_buffer = NULL;
 // Boot count for debugging
 RTC_DATA_ATTR int bootCount = 0;
 
+// OTA crash guard — survives deep sleep but resets on power cycle
+RTC_DATA_ATTR int otaFailCount = 0;
+#define OTA_MAX_RETRIES 3
+
 // TCP listener on port 443 — prevents Android 12+ "connection refused" on HTTPS probes
 WiFiServer httpsRedirectServer(443);
 
@@ -680,12 +684,22 @@ bool updateCalendar() {
 
   // Apply OTA firmware update if available (before bitmap download)
   if (checkResponse.ota.available) {
-    Serial.println("Applying OTA firmware update...");
-    if (!http_ota_update(config.ha_url, checkResponse.ota.url,
-                         mac.c_str(), checkResponse.ota.size)) {
-      Serial.println("OTA update failed, continuing with calendar update");
+    if (otaFailCount >= OTA_MAX_RETRIES) {
+      Serial.printf("OTA: skipping — %d consecutive failures, waiting for new version\n",
+                    otaFailCount);
+    } else {
+      Serial.println("Applying OTA firmware update...");
+      otaFailCount++;  // Increment BEFORE attempt — if we crash, this persists
+      if (!http_ota_update(config.ha_url, checkResponse.ota.url,
+                           mac.c_str(), checkResponse.ota.size)) {
+        Serial.printf("OTA update failed (attempt %d/%d), continuing with calendar update\n",
+                      otaFailCount, OTA_MAX_RETRIES);
+      }
+      // If OTA succeeded, ESP.restart() was called and we never reach here
     }
-    // If OTA succeeded, ESP.restart() was called and we never reach here
+  } else {
+    // No OTA available — reset failure counter (new firmware version may fix things)
+    otaFailCount = 0;
   }
 
   if (checkResponse.result == FETCH_NOT_MODIFIED) {
