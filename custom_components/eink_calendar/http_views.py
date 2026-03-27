@@ -178,8 +178,13 @@ class EinkCalendarBitmapView(HomeAssistantView):
             if not coordinator:
                 return web.Response(text="Device not ready", status=503)
 
-            # Record device check-in
-            coordinator.record_checkin()
+            # Get firmware version from header (sent on check requests)
+            fw_version = request.headers.get("X-Firmware-Version", "")
+
+            # Record device check-in with firmware version
+            coordinator.record_checkin(
+                firmware_version=fw_version if fw_version else None
+            )
 
             # Validate layer name
             valid_layers = [
@@ -211,7 +216,6 @@ class EinkCalendarBitmapView(HomeAssistantView):
             # Check endpoint — sync device state
             if layer == "check":
                 if_none_match = request.headers.get("If-None-Match")
-                fw_version = request.headers.get("X-Firmware-Version", "")
                 image_changed = not (if_none_match and if_none_match == etag)
 
                 # Force refresh overrides ETag match
