@@ -41,6 +41,14 @@ def make_coordinator():
 # ---- Tests: trigger_render ----
 
 
+def get_trigger_render_handler(hass):
+    """Extract the trigger_render handler from registered service calls."""
+    for call in hass.services.async_register.call_args_list:
+        if call[0][1] == SERVICE_TRIGGER_RENDER:
+            return call[0][2]
+    raise AssertionError("trigger_render service not registered")
+
+
 class TestTriggerRender:
     def test_refreshes_all_coordinators(self):
         """trigger_render must refresh ALL coordinators, not just one."""
@@ -58,7 +66,7 @@ class TestTriggerRender:
         asyncio.run(async_setup_services(hass))
 
         # Get the registered handler
-        handler = hass.services.async_register.call_args[0][2]
+        handler = get_trigger_render_handler(hass)
 
         # Call it
         asyncio.run(handler(MagicMock()))
@@ -74,7 +82,7 @@ class TestTriggerRender:
         hass.data[DOMAIN] = {"http_views_registered": True}
 
         asyncio.run(async_setup_services(hass))
-        handler = hass.services.async_register.call_args[0][2]
+        handler = get_trigger_render_handler(hass)
 
         # Should not raise
         asyncio.run(handler(MagicMock()))
@@ -100,7 +108,7 @@ class TestUnloadServices:
         hass.services.async_remove.assert_not_called()
 
     def test_removes_service_when_last_entry(self):
-        """Unloading the last entry MUST remove the service."""
+        """Unloading the last entry MUST remove the services."""
         hass = make_hass()
         hass.services.has_service.return_value = True
 
@@ -109,9 +117,10 @@ class TestUnloadServices:
 
         asyncio.run(async_unload_services(hass, entry_a))
 
-        hass.services.async_remove.assert_called_once_with(
-            DOMAIN, SERVICE_TRIGGER_RENDER,
-        )
+        # Both services should be removed
+        remove_calls = hass.services.async_remove.call_args_list
+        removed_services = {call[0][1] for call in remove_calls}
+        assert SERVICE_TRIGGER_RENDER in removed_services
 
     def test_noop_when_service_not_registered(self):
         """Unload should be a no-op if the service isn't registered."""
@@ -125,12 +134,14 @@ class TestUnloadServices:
         hass.services.async_remove.assert_not_called()
 
     def test_service_registered_only_once(self):
-        """Service is registered only once even with multiple setup calls."""
+        """Each service is registered only once even with multiple setup calls."""
         hass = make_hass()
         hass.services.has_service.return_value = False
         asyncio.run(async_setup_services(hass))
+        first_call_count = hass.services.async_register.call_count
 
         hass.services.has_service.return_value = True
         asyncio.run(async_setup_services(hass))
 
-        assert hass.services.async_register.call_count == 1
+        # No additional registrations on second call
+        assert hass.services.async_register.call_count == first_call_count

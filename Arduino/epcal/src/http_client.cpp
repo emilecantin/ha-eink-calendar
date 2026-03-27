@@ -3,6 +3,8 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include <Update.h>
+#include <esp_task_wdt.h>
 
 // Timeout for HTTP operations (ms)
 #define HTTP_TIMEOUT 15000
@@ -135,56 +137,92 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
 }
 
 FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
-                                  const char* current_etag, const char* mac) {
+                                  const char* current_etag, const char* mac,
+                                  const char* fw_version) {
   FetchResponse response;
   response.result = FETCH_ERROR;
   response.new_etag[0] = '\0';
   response.http_code = 0;
   response.bytes_read = 0;
   response.refresh_interval = -1;
+  response.ota.available = false;
+  response.ota.version[0] = '\0';
+  response.ota.url[0] = '\0';
+  response.ota.size = 0;
 
   HTTPClient http;
   String url = String(ha_url) + check_path;
 
   httpBegin(http, url);
 
-  // Must collect headers before request
-  const char* headerKeys[] = {"ETag", "X-Refresh-Interval"};
-  http.collectHeaders(headerKeys, 2);
-
-  // Add MAC header for authentication
+  // Send device state
   http.addHeader("X-MAC", mac);
-
-  // Send If-None-Match header if we have an etag
+  http.addHeader("X-Firmware-Version", fw_version);
   if (current_etag && current_etag[0] != '\0') {
     http.addHeader("If-None-Match", current_etag);
   }
 
+  // Must collect headers before request (for 304 response)
+  const char* headerKeys[] = {"X-Refresh-Interval"};
+  http.collectHeaders(headerKeys, 1);
+
   int httpCode = http.GET();
   response.http_code = httpCode;
 
-  // Read refresh interval from header (present on both 200 and 304)
-  if (http.hasHeader("X-Refresh-Interval")) {
-    response.refresh_interval = http.header("X-Refresh-Interval").toInt();
-  }
-
   if (httpCode == 304) {
+    // Nothing to do — read refresh interval from header
     response.result = FETCH_NOT_MODIFIED;
-  } else if (httpCode == 200) {
-    response.result = FETCH_OK;
-
-    String etag = http.header("ETag");
-    Serial.printf("Received ETag: %s\n", etag.c_str());
-    if (etag.length() > 0 && etag.length() < 33) {
-      strncpy(response.new_etag, etag.c_str(), 32);
-      response.new_etag[32] = '\0';
+    if (http.hasHeader("X-Refresh-Interval")) {
+      response.refresh_interval = http.header("X-Refresh-Interval").toInt();
     }
-  } else {
-    Serial.printf("HTTP check failed, code: %d\n", httpCode);
-    response.result = FETCH_ERROR;
+    http.end();
+    return response;
   }
 
+  if (httpCode != 200) {
+    Serial.printf("HTTP check failed, code: %d\n", httpCode);
+    http.end();
+    return response;
+  }
+
+  // 200 — something changed, parse JSON body
+  String body = http.getString();
   http.end();
+
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, body);
+  if (err) {
+    Serial.printf("Check JSON parse error: %s\n", err.c_str());
+    return response;
+  }
+
+  // ETag present = image changed
+  const char* etag = doc["etag"];
+  if (etag) {
+    response.result = FETCH_OK;
+    strncpy(response.new_etag, etag, sizeof(response.new_etag) - 1);
+    response.new_etag[sizeof(response.new_etag) - 1] = '\0';
+    Serial.printf("Received ETag: %s\n", response.new_etag);
+  } else {
+    response.result = FETCH_NOT_MODIFIED;
+  }
+
+  // Refresh interval
+  response.refresh_interval = doc["refresh_interval"] | -1;
+
+  // Firmware update
+  JsonObject fw_update = doc["firmware_update"];
+  if (fw_update) {
+    response.ota.available = true;
+    const char* fwVer = fw_update["version"];
+    const char* fwUrl = fw_update["url"];
+    if (fwVer) strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1);
+    if (fwUrl) strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1);
+    response.ota.size = fw_update["size"] | 0;
+    Serial.printf("Firmware update available: v%s (%u bytes)\n",
+                  response.ota.version, response.ota.size);
+  }
+
   return response;
 }
 
@@ -284,4 +322,111 @@ FetchResponse http_fetch_chunk(
 
   http.end();
   return response;
+}
+
+bool http_ota_update(const char* ha_url, const char* ota_path,
+                     const char* mac, uint32_t expected_size) {
+  if (expected_size == 0) {
+    Serial.println("OTA: no expected size provided, aborting");
+    return false;
+  }
+
+  Serial.printf("OTA: downloading firmware (%u bytes) from %s%s\n",
+                expected_size, ha_url, ota_path);
+
+  HTTPClient http;
+  String url = String(ha_url) + ota_path;
+
+  httpBegin(http, url);
+  http.addHeader("X-MAC", mac);
+
+  int httpCode = http.GET();
+  if (httpCode != 200) {
+    Serial.printf("OTA: HTTP %d\n", httpCode);
+    http.end();
+    return false;
+  }
+
+  int contentLength = http.getSize();
+  if (contentLength <= 0) {
+    Serial.println("OTA: invalid content length");
+    http.end();
+    return false;
+  }
+
+  if ((uint32_t)contentLength != expected_size) {
+    Serial.printf("OTA: size mismatch: got %d, expected %u\n",
+                  contentLength, expected_size);
+    http.end();
+    return false;
+  }
+
+  if (!Update.begin(contentLength)) {
+    Serial.printf("OTA: Update.begin failed: %s\n", Update.errorString());
+    http.end();
+    return false;
+  }
+
+  Serial.println("OTA: flashing...");
+
+  WiFiClient* stream = http.getStreamPtr();
+  size_t written = 0;
+  uint8_t buf[4096];
+  unsigned long lastDataTime = millis();
+
+  while (http.connected() && written < (size_t)contentLength) {
+    // Reset watchdog — download + flash can take a while
+    esp_task_wdt_reset();
+
+    size_t available = stream->available();
+    if (available > 0) {
+      size_t toRead = min(available, sizeof(buf));
+      toRead = min(toRead, (size_t)contentLength - written);
+      size_t bytesRead = stream->readBytes(buf, toRead);
+      size_t bytesWritten = Update.write(buf, bytesRead);
+      if (bytesWritten != bytesRead) {
+        Serial.printf("OTA: write error at %zu bytes: %s\n",
+                      written, Update.errorString());
+        Update.abort();
+        http.end();
+        return false;
+      }
+      written += bytesWritten;
+      lastDataTime = millis();
+
+      // Progress every 100KB
+      if (written % 102400 < bytesWritten) {
+        Serial.printf("OTA: %zu / %d bytes (%d%%)\n",
+                      written, contentLength, (int)(written * 100 / contentLength));
+      }
+    } else if (millis() - lastDataTime > DOWNLOAD_STALL_TIMEOUT) {
+      Serial.printf("OTA: download stalled at %zu / %d bytes\n",
+                    written, contentLength);
+      Update.abort();
+      http.end();
+      return false;
+    }
+    yield();
+  }
+
+  if (written < (size_t)contentLength) {
+    Serial.printf("OTA: connection lost at %zu / %d bytes\n",
+                  written, contentLength);
+    Update.abort();
+    http.end();
+    return false;
+  }
+
+  http.end();
+
+  if (!Update.end(true)) {
+    Serial.printf("OTA: finalize failed: %s\n", Update.errorString());
+    return false;
+  }
+
+  Serial.println("OTA: success! Rebooting...");
+  Serial.flush();
+  delay(100);
+  ESP.restart();
+  return true;  // Never reached
 }

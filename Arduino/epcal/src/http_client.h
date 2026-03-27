@@ -11,6 +11,14 @@ enum FetchResult {
   FETCH_ERROR          // Network or server error
 };
 
+// OTA firmware update info (from announce or check response)
+struct OtaInfo {
+  bool available;
+  char version[32];
+  char url[128];
+  uint32_t size;
+};
+
 // Response from fetch operation
 struct FetchResponse {
   FetchResult result;
@@ -18,6 +26,7 @@ struct FetchResponse {
   int http_code;       // HTTP status code
   size_t bytes_read;   // Number of bytes downloaded
   int refresh_interval; // From X-Refresh-Interval header (-1 if absent)
+  OtaInfo ota;         // OTA info from check response headers
 };
 
 // Announce status
@@ -26,14 +35,6 @@ enum AnnounceStatus {
   ANNOUNCE_PENDING,         // Waiting for user to configure in HA
   ANNOUNCE_NOT_INSTALLED,   // HA found but integration not installed (404)
   ANNOUNCE_ERROR            // Error communicating with HA
-};
-
-// OTA firmware update info from announce response
-struct OtaInfo {
-  bool available;
-  char version[32];
-  char url[128];
-  uint32_t size;
 };
 
 // Response from announce
@@ -59,16 +60,19 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
                                const char* name, const char* fw_version);
 
 /**
- * Check if calendar has changed using ETag
+ * Sync device state with Home Assistant.
+ * Sends current ETag and firmware version; HA responds with what needs updating.
  *
  * @param ha_url       Home Assistant base URL
  * @param check_path   Check endpoint path (from announce response)
  * @param current_etag Current stored ETag (empty string if none)
  * @param mac          Device MAC address (for X-MAC header)
- * @return             FETCH_OK if changed, FETCH_NOT_MODIFIED if same, FETCH_ERROR on failure
+ * @param fw_version   Current firmware version (for OTA check)
+ * @return             FetchResponse with image/OTA/refresh info
  */
 FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
-                                  const char* current_etag, const char* mac);
+                                  const char* current_etag, const char* mac,
+                                  const char* fw_version);
 
 /**
  * Fetch a bitmap chunk from the server
@@ -89,5 +93,18 @@ FetchResponse http_fetch_chunk(
   uint8_t* buffer,
   size_t buffer_size
 );
+
+/**
+ * Download and flash OTA firmware update.
+ * On success, calls ESP.restart() and never returns.
+ *
+ * @param ha_url         Home Assistant base URL
+ * @param ota_path       Firmware endpoint path (from OtaInfo.url)
+ * @param mac            Device MAC address (for X-MAC header)
+ * @param expected_size  Expected firmware size in bytes (from OtaInfo.size)
+ * @return               false on error (true never returned — success reboots)
+ */
+bool http_ota_update(const char* ha_url, const char* ota_path,
+                     const char* mac, uint32_t expected_size);
 
 #endif // EINK_CALENDAR_HTTP_CLIENT_H

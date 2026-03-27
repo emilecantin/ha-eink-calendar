@@ -150,10 +150,12 @@ pio device monitor -b 115200
 
 1. WiFi connect (WiFiManager with "EinkCal-Setup" AP)
 2. mDNS discovery for `_home-assistant._tcp`
-3. POST `/api/eink_calendar/announce` with MAC/name/firmware
+3. POST `/api/eink_calendar/announce` with MAC/name/firmware (re-announces every boot, even if already configured, to check for OTA)
 4. If "pending" → show "Waiting for HA" on display, sleep 30s, retry
-5. If "configured" → store entry_id + endpoints, log OTA info if present, fetch bitmaps
-6. Display bitmaps, deep sleep for refresh_interval
+5. If "configured" → store entry_id + endpoints
+6. If OTA available → download and flash firmware via `http_ota_update()`, reboot (streaming 4KB buffer with watchdog management and stall detection)
+7. ETag check + fetch bitmaps if changed
+8. Display bitmaps, deep sleep for refresh_interval
 
 ## Display Specifications
 

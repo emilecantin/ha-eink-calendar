@@ -98,5 +98,5 @@ async def async_unload_services(hass: HomeAssistant, entry: ConfigEntry) -> None
     ]
     if not remaining:
         hass.services.async_remove(DOMAIN, SERVICE_TRIGGER_RENDER)
-    if hass.services.has_service(DOMAIN, SERVICE_UPLOAD_FIRMWARE):
-        hass.services.async_remove(DOMAIN, SERVICE_UPLOAD_FIRMWARE)
+        if hass.services.has_service(DOMAIN, SERVICE_UPLOAD_FIRMWARE):
+            hass.services.async_remove(DOMAIN, SERVICE_UPLOAD_FIRMWARE)

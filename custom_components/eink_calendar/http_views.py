@@ -9,6 +9,8 @@ from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
 
+import json
+
 from .const import CONF_MAC_ADDRESS, DOMAIN, FIRMWARE_MANAGER_KEY
 
 _LOGGER = logging.getLogger(__name__)
@@ -206,27 +208,53 @@ class EinkCalendarBitmapView(HomeAssistantView):
             etag = rendered.etag
             refresh_interval = str(entry.options.get("refresh_interval", 15))
 
-            # Check If-None-Match (applies to both check and layer requests)
-            if_none_match = request.headers.get("If-None-Match")
+            # Check endpoint — sync device state
             if layer == "check":
+                if_none_match = request.headers.get("If-None-Match")
+                fw_version = request.headers.get("X-Firmware-Version", "")
+                image_changed = not (if_none_match and if_none_match == etag)
+
                 _LOGGER.warning(
-                    "Check request: If-None-Match=%s, current ETag=%s, match=%s",
-                    if_none_match,
-                    etag,
-                    if_none_match == etag if if_none_match else "no-etag-sent",
-                )
-            if if_none_match and if_none_match == etag:
-                return web.Response(
-                    status=304,
-                    headers={"X-Refresh-Interval": refresh_interval},
+                    "Check request: If-None-Match=%s, ETag=%s, FW=%s, image_changed=%s",
+                    if_none_match, etag, fw_version, image_changed,
                 )
 
-            # ETag-only check endpoint
-            if layer == "check":
-                return web.Response(
-                    status=200,
-                    headers={"ETag": etag, "X-Refresh-Interval": refresh_interval},
+                # Check for firmware update
+                fw_manager = self.hass.data.get(DOMAIN, {}).get(
+                    FIRMWARE_MANAGER_KEY
                 )
+                ota_info = None
+                if fw_manager and fw_version:
+                    ota_info = fw_manager.build_ota_info(
+                        fw_version, entry_id
+                    )
+
+                # 304 only if nothing to do
+                if not image_changed and not ota_info:
+                    return web.Response(
+                        status=304,
+                        headers={"X-Refresh-Interval": refresh_interval},
+                    )
+
+                # 200 with JSON body describing what changed
+                response_data = {
+                    "refresh_interval": int(refresh_interval),
+                }
+                if image_changed:
+                    response_data["etag"] = etag
+                if ota_info:
+                    response_data["firmware_update"] = ota_info
+
+                return web.Response(
+                    text=json.dumps(response_data),
+                    content_type="application/json",
+                    status=200,
+                )
+
+            # Bitmap layer requests — ETag check
+            if_none_match = request.headers.get("If-None-Match")
+            if if_none_match and if_none_match == etag:
+                return web.Response(status=304)
 
             # Get the appropriate chunk
             chunk = None
