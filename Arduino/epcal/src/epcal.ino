@@ -348,7 +348,7 @@ bool tryAnnounce(const char* ha_url) {
     endpoints_save(&endpoints);
 
     if (resp.ota.available) {
-      Serial.printf("OTA update available: v%s (%d bytes) at %s\n",
+      Serial.printf("OTA update available: v%s (%u bytes) at %s\n",
                     resp.ota.version, resp.ota.size, resp.ota.url);
     }
 

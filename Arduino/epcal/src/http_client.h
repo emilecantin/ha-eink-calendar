@@ -33,7 +33,7 @@ struct OtaInfo {
   bool available;
   char version[32];
   char url[128];
-  int size;
+  uint32_t size;
 };
 
 // Response from announce
