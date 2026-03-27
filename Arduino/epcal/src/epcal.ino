@@ -35,7 +35,7 @@ int Version = 1;
 #define ANNOUNCE_POLL_INTERVAL 30000
 
 // Device info
-#define FIRMWARE_VERSION "1.0.0"
+#define FIRMWARE_VERSION "1.1.0"
 #define DEVICE_NAME_PREFIX "EinkCal"
 
 // WiFiManager custom parameters (shown on the advanced "Setup" page)
@@ -281,7 +281,7 @@ void setup() {
     }
   }
 
-  // Step 3: Check for calendar updates and refresh display
+  // Step 2: Check for calendar updates and refresh display
   if (!updateCalendar()) {
     // Download failed — retry in 60 seconds instead of full interval
     Serial.println("Calendar update failed, retrying in 60s");
@@ -658,9 +658,9 @@ bool updateCalendar() {
 
   String mac = getDeviceMac();
 
-  // Check if calendar has changed using ETag
+  // Sync state with HA — sends ETag + firmware version, gets back what changed
   FetchResponse checkResponse = http_check_calendar(
-    config.ha_url, endpoints.check, cache.etag, mac.c_str());
+    config.ha_url, endpoints.check, cache.etag, mac.c_str(), FIRMWARE_VERSION);
 
   // Update refresh interval if HA sent a new one
   if (checkResponse.refresh_interval > 0) {
@@ -673,14 +673,24 @@ bool updateCalendar() {
     }
   }
 
-  if (checkResponse.result == FETCH_NOT_MODIFIED) {
-    Serial.println("Calendar unchanged (304), skipping display refresh");
-    return true;
-  }
-
   if (checkResponse.result == FETCH_ERROR) {
     Serial.printf("Check failed with HTTP %d\n", checkResponse.http_code);
     return false;
+  }
+
+  // Apply OTA firmware update if available (before bitmap download)
+  if (checkResponse.ota.available) {
+    Serial.println("Applying OTA firmware update...");
+    if (!http_ota_update(config.ha_url, checkResponse.ota.url,
+                         mac.c_str(), checkResponse.ota.size)) {
+      Serial.println("OTA update failed, continuing with calendar update");
+    }
+    // If OTA succeeded, ESP.restart() was called and we never reach here
+  }
+
+  if (checkResponse.result == FETCH_NOT_MODIFIED) {
+    Serial.println("Calendar unchanged, skipping display refresh");
+    return true;
   }
 
   esp_task_wdt_reset();

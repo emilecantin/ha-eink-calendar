@@ -339,7 +339,8 @@ After initial onboarding, the flow simplifies:
 
 ```
 Boot → WiFi connect
-  → Announce (gets "configured" + endpoints)
+  → Announce (gets "configured" + endpoints + optional OTA info)
+  → OTA available? → download & flash → reboot
   → ETag check
     → 304: sleep
     → 200: download 4 chunks → display → sleep
@@ -348,6 +349,7 @@ Boot → WiFi connect
 The announce call on every boot ensures:
 - ESP32 always has fresh endpoints (in case HA restarts and entry_id changes)
 - HA knows the device is still alive (for device status tracking)
+- OTA firmware updates are applied promptly
 
 ---
 
@@ -457,6 +459,6 @@ This requires:
 1. **Confirmation step in discovery flow** — show "Device found, set up?" before full config form.
 2. **Render caching** — cache rendered bitmap in coordinator, don't re-render per request.
 3. **Device status tracking** — record last announce time, show "online/offline" in HA.
-4. **Firmware update via HA** — OTA announce protocol is implemented (announce response includes `firmware_update` when an update is available). Remaining: ESP32 firmware must implement the actual OTA download and flash logic.
+4. ~~**Firmware update via HA**~~ — **Implemented in v1.1.0.** The announce response includes `firmware_update` when an update is available, and the ESP32 firmware downloads and flashes it via `http_ota_update()` (streaming 4KB buffer with watchdog management and stall detection). On success, the device reboots into the new firmware.
 5. **Runtime QR code on "Waiting" screen** — link to HA integrations page for easy navigation.
 6. **Bilingual display messages** — locale selection in WiFiManager or from HA config.
