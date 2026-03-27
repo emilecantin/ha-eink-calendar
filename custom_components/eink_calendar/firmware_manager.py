@@ -57,6 +57,19 @@ class FirmwareManager:
             return False
         return info["version"] != device_version
 
+    def build_ota_info(
+        self, device_version: str, entry_id: str
+    ) -> dict[str, str | int] | None:
+        """Build OTA update info for announce response, or None if no update needed."""
+        info = self.get_firmware_info()
+        if info is None or info["version"] == device_version:
+            return None
+        return {
+            "version": info["version"],
+            "url": f"/api/eink_calendar/firmware/{entry_id}",
+            "size": info["size"],
+        }
+
     def store_firmware(self, binary: bytes, version: str) -> None:
         """Store firmware binary and version."""
         self._ensure_dir()

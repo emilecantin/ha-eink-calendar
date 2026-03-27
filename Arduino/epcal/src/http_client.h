@@ -28,12 +28,21 @@ enum AnnounceStatus {
   ANNOUNCE_ERROR            // Error communicating with HA
 };
 
+// OTA firmware update info from announce response
+struct OtaInfo {
+  bool available;
+  char version[32];
+  char url[128];
+  int size;
+};
+
 // Response from announce
 struct AnnounceResponse {
   AnnounceStatus status;
   char entry_id[64];
   uint32_t refresh_interval;  // in minutes
   BitmapEndpoints endpoints;
+  OtaInfo ota;
   int http_code;
 };
 

@@ -59,23 +59,34 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                         entry.entry_id,
                     )
 
-                    # Device is already configured
-                    return self.json(
-                        {
-                            "status": "configured",
-                            "entry_id": entry.entry_id,
-                            "refresh_interval": entry.options.get(
-                                "refresh_interval", 15
-                            ),
-                            "endpoints": {
-                                "black_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/black_top",
-                                "black_bottom": f"/api/eink_calendar/bitmap/{entry.entry_id}/black_bottom",
-                                "red_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_top",
-                                "red_bottom": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_bottom",
-                                "check": f"/api/eink_calendar/bitmap/{entry.entry_id}/check",
-                            },
-                        }
+                    # Build response
+                    response_data = {
+                        "status": "configured",
+                        "entry_id": entry.entry_id,
+                        "refresh_interval": entry.options.get(
+                            "refresh_interval", 15
+                        ),
+                        "endpoints": {
+                            "black_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/black_top",
+                            "black_bottom": f"/api/eink_calendar/bitmap/{entry.entry_id}/black_bottom",
+                            "red_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_top",
+                            "red_bottom": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_bottom",
+                            "check": f"/api/eink_calendar/bitmap/{entry.entry_id}/check",
+                        },
+                    }
+
+                    # Include OTA info if firmware update available
+                    fw_manager = self.hass.data.get(DOMAIN, {}).get(
+                        FIRMWARE_MANAGER_KEY
                     )
+                    if fw_manager:
+                        ota_info = fw_manager.build_ota_info(
+                            firmware_version, entry.entry_id
+                        )
+                        if ota_info:
+                            response_data["firmware_update"] = ota_info
+
+                    return self.json(response_data)
 
             # Check if there's already a pending discovery flow for this MAC
             for flow in self.hass.config_entries.flow.async_progress():

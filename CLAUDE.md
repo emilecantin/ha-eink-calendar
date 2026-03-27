@@ -96,7 +96,7 @@ cd server && npx tsc --noEmit
 3. HA fires `config_entries.flow.async_init(DOMAIN, context={"source": "discovery"})`
 4. "Discovered" card appears in Settings → Integrations
 5. User configures calendars, weather, layout in the config flow
-6. ESP32 polls `/announce` and gets `{status: "configured", endpoints: {...}}`
+6. ESP32 polls `/announce` and gets `{status: "configured", endpoints: {...}}` (plus optional `firmware_update` if OTA available)
 7. ESP32 fetches bitmaps from returned endpoints with `X-MAC` header auth
 
 ### API Endpoints
@@ -152,7 +152,7 @@ pio device monitor -b 115200
 2. mDNS discovery for `_home-assistant._tcp`
 3. POST `/api/eink_calendar/announce` with MAC/name/firmware
 4. If "pending" → show "Waiting for HA" on display, sleep 30s, retry
-5. If "configured" → store entry_id + endpoints, fetch bitmaps
+5. If "configured" → store entry_id + endpoints, log OTA info if present, fetch bitmaps
 6. Display bitmaps, deep sleep for refresh_interval
 
 ## Display Specifications
