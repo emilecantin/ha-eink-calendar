@@ -204,6 +204,35 @@ Hold BOOT button (GPIO0) for 2 seconds during startup to enter config mode. Disp
 7. **Pre-rendered setup screen**: Avoids runtime QR generation on ESP32
 8. **Inter font**: Optimized for e-paper readability
 
+## Development Workflow
+
+### Work Units
+
+All non-trivial changes follow a **work unit** workflow:
+
+1. **Plan** (`/plan-work`): Break features into small, independent work units (<300 lines changed, 1-3 files each), each with tests defined upfront
+2. **Implement + Review** (`/work`): Execute a work unit using TDD (red/green/refactor), then automatic review loop
+3. **Review** (`/review`): Standalone code review (also used internally by `/work`)
+
+### Review Loop
+
+Every work unit goes through a review cycle:
+- A reviewer agent evaluates changes against correctness, conventions, security, and simplicity
+- Each finding is categorized: **PASS**, **REWORK** (must fix), or **FLAG_FOR_HUMAN** (needs human decision)
+- REWORK items are fixed and re-reviewed automatically (max 3 rounds)
+- FLAG_FOR_HUMAN items are presented to the user for decision
+- Once review passes: a documentation agent checks if any docs need updating (CLAUDE.md, docs/, inline comments)
+- Then: commit to a `<type>/<description>` branch (e.g., `feat/`, `fix/`, `refactor/`), push, and create a PR
+
+### Commands
+
+| Command | Purpose |
+|---------|---------|
+| `/plan-work [description]` | Break a task into work units |
+| `/work [description]` | Implement a work unit with review loop |
+| `/review [scope]` | Review changes (defaults to uncommitted) |
+| `/create-release` | Push and create a GitHub release |
+
 ## Development Guidelines
 
 ### Home Assistant Integration
