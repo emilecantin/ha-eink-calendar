@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_NAME, CONF_MAC_ADDRESS, DOMAIN, SENSOR_LAST_CHECKIN_NAME, SENSOR_LAST_UPDATE_NAME
+from .const import CONF_DEVICE_NAME, CONF_MAC_ADDRESS, DOMAIN, SENSOR_FIRMWARE_VERSION_NAME, SENSOR_LAST_CHECKIN_NAME, SENSOR_LAST_UPDATE_NAME
 from .coordinator import EinkCalendarDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +28,7 @@ async def async_setup_entry(
         [
             EinkCalendarLastUpdateSensor(coordinator, entry),
             EinkCalendarLastCheckinSensor(coordinator, entry),
+            EinkCalendarFirmwareVersionSensor(coordinator, entry),
         ]
     )
 
@@ -87,3 +88,35 @@ class EinkCalendarLastCheckinSensor(SensorEntity):
     def native_value(self) -> datetime | None:
         """Return the last check-in timestamp."""
         return self.coordinator.last_checkin
+
+
+class EinkCalendarFirmwareVersionSensor(SensorEntity):
+    """Sensor showing the ESP32's firmware version."""
+
+    _attr_icon = "mdi:chip"
+
+    def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
+        """Initialize the sensor."""
+        self.coordinator = coordinator
+        self.entry = entry
+        self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Firmware Version"
+        self._attr_unique_id = f"{entry.entry_id}_{SENSOR_FIRMWARE_VERSION_NAME}"
+        mac = entry.data.get(CONF_MAC_ADDRESS)
+        self._attr_device_info = {
+            "identifiers": {(DOMAIN, mac)} if mac else {(DOMAIN, entry.entry_id)},
+        }
+
+    async def async_added_to_hass(self) -> None:
+        """Register listener when entity is added."""
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self._handle_coordinator_update)
+        )
+
+    def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str:
+        """Return the firmware version string."""
+        return self.coordinator.firmware_version

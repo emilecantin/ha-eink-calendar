@@ -50,12 +50,12 @@ class EinkCalendarAnnounceView(HomeAssistantView):
             # Check if MAC matches an existing config entry
             for entry in self.hass.config_entries.async_entries(DOMAIN):
                 if entry.data.get(CONF_MAC_ADDRESS) == mac:
-                    # Record check-in
+                    # Record check-in and firmware version
                     coordinator = self.hass.data.get(DOMAIN, {}).get(entry.entry_id)
                     if coordinator:
-                        coordinator.record_checkin()
+                        coordinator.record_checkin(firmware_version=firmware_version)
 
-                    _LOGGER.warning(
+                    _LOGGER.debug(
                         "Announce: MAC=%s configured, entry_id=%s",
                         mac,
                         entry.entry_id,
@@ -149,7 +149,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
     ) -> web.Response:
         """Serve bitmap layer."""
         try:
-            _LOGGER.warning(
+            _LOGGER.debug(
                 "Bitmap request: entry_id=%s, layer=%s", entry_id, layer,
             )
 
@@ -214,7 +214,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 fw_version = request.headers.get("X-Firmware-Version", "")
                 image_changed = not (if_none_match and if_none_match == etag)
 
-                _LOGGER.warning(
+                _LOGGER.debug(
                     "Check request: If-None-Match=%s, ETag=%s, FW=%s, image_changed=%s",
                     if_none_match, etag, fw_version, image_changed,
                 )

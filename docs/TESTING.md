@@ -33,6 +33,7 @@ Pass any pytest arguments through the script:
 | `test_event_renderer.py` | `format_multi_day_time` (arrows), `sort_events_by_priority` (all-day first) |
 | `test_weather_utils.py` | `get_forecast_for_date` (matching, missing data, timezone handling) |
 | `test_renderer_integration.py` | Full `render_calendar` + `render_to_png` pipeline, legend creation |
+| `test_firmware_sensor.py` | Firmware version sensor entity (value from coordinator, listener registration) |
 | `test_visual_regression.py` | Renders various scenarios to PNG for visual inspection |
 
 ### Visual Regression

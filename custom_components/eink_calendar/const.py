@@ -13,6 +13,7 @@ DEFAULT_REFRESH_INTERVAL = 15  # minutes
 CAMERA_NAME = "preview"
 SENSOR_LAST_UPDATE_NAME = "last_update"
 SENSOR_LAST_CHECKIN_NAME = "last_checkin"
+SENSOR_FIRMWARE_VERSION_NAME = "firmware_version"
 IMAGE_BLACK_TOP_NAME = "black_layer_top"
 IMAGE_BLACK_BOTTOM_NAME = "black_layer_bottom"
 IMAGE_RED_TOP_NAME = "red_layer_top"
