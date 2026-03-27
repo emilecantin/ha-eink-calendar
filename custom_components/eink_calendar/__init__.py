@@ -56,7 +56,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     ensure_http_views(hass)
 
     # Register services
-    await async_setup_services(hass, entry)
+    await async_setup_services(hass)
 
     # Register device - use MAC as identifier if available, otherwise entry_id
     mac = entry.data.get(CONF_MAC_ADDRESS)
@@ -83,7 +83,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    await async_unload_services(hass)
+    await async_unload_services(hass, entry)
 
     if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
