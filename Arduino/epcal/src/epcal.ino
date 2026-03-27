@@ -13,7 +13,7 @@
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <esp_task_wdt.h>
-#include <SPIFFS.h>
+#include <LittleFS.h>
 #include "config.h"
 #include "http_client.h"
 #include "display.h"
@@ -721,11 +721,12 @@ bool updateCalendar() {
     return false;
   }
 
-  if (!SPIFFS.begin(true)) {
-    Serial.println("SPIFFS mount failed!");
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed!");
     free(chunk_buffer);
     return false;
   }
+  Serial.printf("LittleFS: total=%u, used=%u\n", LittleFS.totalBytes(), LittleFS.usedBytes());
 
   bool success = true;
   const char* failedEndpoint = NULL;
@@ -738,7 +739,7 @@ bool updateCalendar() {
     "/bk1.bin", "/bk2.bin", "/rd1.bin", "/rd2.bin",
   };
 
-  // --- Phase 1: Download all chunks to SPIFFS ---
+  // --- Phase 1: Download all chunks to LittleFS ---
 
   for (int i = 0; i < 4 && success; i++) {
     FetchResponse resp = http_fetch_chunk(config.ha_url, chunk_endpoints[i],
@@ -751,9 +752,18 @@ bool updateCalendar() {
     if (i == 0 && resp.new_etag[0] != '\0') {
       strncpy(cache.etag, resp.new_etag, sizeof(cache.etag) - 1);
     }
-    File f = SPIFFS.open(chunk_files[i], FILE_WRITE);
-    if (!f || f.write(chunk_buffer, CHUNK_BUFFER_SIZE) != CHUNK_BUFFER_SIZE) {
-      Serial.printf("SPIFFS write failed: %s\n", chunk_files[i]);
+    File f = LittleFS.open(chunk_files[i], FILE_WRITE);
+    if (!f) {
+      Serial.printf("LittleFS open failed: %s\n", chunk_files[i]);
+      success = false;
+      failedEndpoint = chunk_endpoints[i];
+      break;
+    }
+    size_t written = f.write(chunk_buffer, CHUNK_BUFFER_SIZE);
+    if (written != CHUNK_BUFFER_SIZE) {
+      Serial.printf("LittleFS write failed: %s (wrote %zu / %d, total=%u, used=%u)\n",
+                    chunk_files[i], written, CHUNK_BUFFER_SIZE,
+                    LittleFS.totalBytes(), LittleFS.usedBytes());
       if (f) f.close();
       success = false;
       failedEndpoint = chunk_endpoints[i];
@@ -766,13 +776,13 @@ bool updateCalendar() {
   if (!success) {
     Serial.printf("Download failed for %s\n", failedEndpoint);
     free(chunk_buffer);
-    SPIFFS.end();
+    LittleFS.end();
     display_show_message("Download failed", "Retrying in 60 seconds...");
     display_sleep();
     return false;
   }
 
-  // --- Phase 2: Init display, read chunks from SPIFFS, send ---
+  // --- Phase 2: Init display, read chunks from LittleFS, send ---
 
   display_init();
 
@@ -783,9 +793,9 @@ bool updateCalendar() {
   };
 
   for (int i = 0; i < 4 && success; i++) {
-    File f = SPIFFS.open(chunk_files[i], FILE_READ);
+    File f = LittleFS.open(chunk_files[i], FILE_READ);
     if (!f || f.read(chunk_buffer, CHUNK_BUFFER_SIZE) != CHUNK_BUFFER_SIZE) {
-      Serial.printf("SPIFFS read failed: %s\n", chunk_files[i]);
+      Serial.printf("LittleFS read failed: %s\n", chunk_files[i]);
       if (f) f.close();
       success = false;
       break;
@@ -797,7 +807,7 @@ bool updateCalendar() {
 
   free(chunk_buffer);
   chunk_buffer = NULL;
-  SPIFFS.end();
+  LittleFS.end();
 
   if (success) {
     Serial.println("Refreshing display...");
@@ -808,7 +818,7 @@ bool updateCalendar() {
 
     Serial.println("Display updated successfully!");
   } else {
-    Serial.println("SPIFFS read failed during display update");
+    Serial.println("LittleFS read failed during display update");
   }
 
   display_sleep();
