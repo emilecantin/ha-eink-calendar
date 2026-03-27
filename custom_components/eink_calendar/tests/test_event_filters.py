@@ -1,377 +1,192 @@
 """Unit tests for event_filters module."""
 
-import unittest
-from datetime import datetime
-from typing import cast
+from datetime import datetime, timezone
 
-from ..renderer.event_filters import (
-    get_collection_icons_for_day,
-    get_events_for_day,
-)
-from ..renderer.types import CalendarEvent
+from renderer.event_filters import get_collection_icons_for_day, get_events_for_day
 
 
-def create_event(**kwargs) -> CalendarEvent:
-    """Create a test event with default values for required fields."""
-    defaults: CalendarEvent = {
+def make_event(**kwargs):
+    """Create a test event with defaults."""
+    defaults = {
         "title": "",
-        "start": datetime(2026, 1, 1, 0, 0),
-        "end": datetime(2026, 1, 1, 0, 0),
+        "start": datetime(2026, 1, 1),
+        "end": datetime(2026, 1, 1),
         "allDay": False,
         "calendarId": "calendar.test",
-        "calendarIcon": "●",
+        "calendarIcon": "mdi:calendar",
     }
-    return cast(CalendarEvent, {**defaults, **kwargs})
+    return {**defaults, **kwargs}
 
 
-class TestGetEventsForDay(unittest.TestCase):
-    """Test get_events_for_day function."""
+TODAY = datetime(2026, 1, 26, 10, 0, 0)
 
-    def setUp(self):
-        """Set up test fixtures."""
-        self.today = datetime(2026, 1, 26, 10, 0, 0)  # Monday, Jan 26, 2026 at 10:00
 
-    def test_single_day_event_on_target_day(self):
-        """Test single-day event on the target day."""
-        events = cast(
-            list[CalendarEvent],
-            [
-                {
-                    "id": "1",
-                    "title": "Meeting",
-                    "start": datetime(2026, 1, 26, 14, 0),
-                    "end": datetime(2026, 1, 26, 15, 0),
-                    "allDay": False,
-                    "calendarId": "calendar.personal",
-                    "calendarIcon": "●",
-                }
-            ],
-        )
+# --- get_events_for_day ---
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
 
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0]["event"]["title"], "Meeting")
-        self.assertTrue(result[0]["startsOnDay"])
-        self.assertTrue(result[0]["endsOnDay"])
+class TestGetEventsForDay:
+    def test_single_day_event(self):
+        events = [make_event(
+            title="Meeting",
+            start=datetime(2026, 1, 26, 14, 0),
+            end=datetime(2026, 1, 26, 15, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["event"]["title"] == "Meeting"
+        assert result[0]["startsOnDay"] is True
+        assert result[0]["endsOnDay"] is True
 
-    def test_all_day_event_on_target_day(self):
-        """Test all-day event on the target day."""
+    def test_all_day_event(self):
+        events = [make_event(
+            title="Holiday",
+            start=datetime(2026, 1, 26),
+            end=datetime(2026, 1, 26, 23, 59),
+            allDay=True,
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is True
+
+    def test_multi_day_starts_on_day(self):
+        events = [make_event(
+            start=datetime(2026, 1, 26, 9, 0),
+            end=datetime(2026, 1, 28, 17, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is True
+        assert result[0]["endsOnDay"] is False
+
+    def test_multi_day_ends_on_day(self):
+        events = [make_event(
+            start=datetime(2026, 1, 24, 9, 0),
+            end=datetime(2026, 1, 26, 17, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is False
+        assert result[0]["endsOnDay"] is True
+
+    def test_multi_day_spans_day(self):
+        events = [make_event(
+            start=datetime(2026, 1, 25, 9, 0),
+            end=datetime(2026, 1, 27, 17, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is False
+        assert result[0]["endsOnDay"] is False
+
+    def test_event_on_different_day_excluded(self):
+        events = [make_event(
+            start=datetime(2026, 1, 27, 14, 0),
+            end=datetime(2026, 1, 27, 15, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 0
+
+    def test_past_event_excluded(self):
+        events = [make_event(
+            start=datetime(2026, 1, 24, 14, 0),
+            end=datetime(2026, 1, 25, 15, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 0
+
+    def test_multiple_events(self):
         events = [
-            {
-                "id": "1",
-                "title": "Holiday",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-            }
+            make_event(start=datetime(2026, 1, 26, 9, 0), end=datetime(2026, 1, 26, 10, 0)),
+            make_event(start=datetime(2026, 1, 26, 12, 0), end=datetime(2026, 1, 26, 13, 0)),
+            make_event(start=datetime(2026, 1, 26, 15, 0), end=datetime(2026, 1, 26, 16, 0)),
         ]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 3
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 1)
-        self.assertTrue(result[0]["startsOnDay"])
-
-    def test_multi_day_event_starting_on_target_day(self):
-        """Test multi-day event that starts on target day."""
+    def test_mixed_naive_aware_datetimes(self):
+        """Mixing naive all-day and aware timed events should not crash."""
+        aware_today = datetime(2026, 1, 26, 10, 0, tzinfo=timezone.utc)
         events = [
-            {
-                "id": "1",
-                "title": "Conference",
-                "start": datetime(2026, 1, 26, 9, 0),
-                "end": datetime(2026, 1, 28, 17, 0),
-                "allDay": False,
-            }
+            make_event(
+                title="All Day",
+                start=datetime(2026, 1, 26),  # naive
+                end=datetime(2026, 1, 26, 23, 59),
+                allDay=True,
+            ),
+            make_event(
+                title="Timed",
+                start=datetime(2026, 1, 26, 14, 0, tzinfo=timezone.utc),  # aware
+                end=datetime(2026, 1, 26, 15, 0, tzinfo=timezone.utc),
+            ),
         ]
+        result = get_events_for_day(events, aware_today)
+        assert len(result) == 2
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 1)
-        self.assertTrue(result[0]["startsOnDay"])
-        self.assertFalse(result[0]["endsOnDay"])
-
-    def test_multi_day_event_ending_on_target_day(self):
-        """Test multi-day event that ends on target day."""
+    def test_event_missing_start_or_end_skipped(self):
         events = [
-            {
-                "id": "1",
-                "title": "Conference",
-                "start": datetime(2026, 1, 24, 9, 0),
-                "end": datetime(2026, 1, 26, 17, 0),
-                "allDay": False,
-            }
+            make_event(start=None, end=datetime(2026, 1, 26, 15, 0)),
+            make_event(start=datetime(2026, 1, 26, 14, 0), end=None),
         ]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 0
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
 
-        self.assertEqual(len(result), 1)
-        self.assertFalse(result[0]["startsOnDay"])
-        self.assertTrue(result[0]["endsOnDay"])
+# --- get_collection_icons_for_day ---
 
-    def test_multi_day_event_spanning_target_day(self):
-        """Test multi-day event that spans across target day (middle day)."""
+
+class TestGetCollectionIconsForDay:
+    def test_waste_event_on_day(self):
+        events = [make_event(
+            start=datetime(2026, 1, 26),
+            end=datetime(2026, 1, 26, 23, 59),
+            allDay=True,
+            calendarIcon="mdi:trash-can",
+        )]
+        result = get_collection_icons_for_day(events, TODAY)
+        assert result == ["mdi:trash-can"]
+
+    def test_multiple_types(self):
         events = [
-            {
-                "id": "1",
-                "title": "Conference",
-                "start": datetime(2026, 1, 25, 9, 0),
-                "end": datetime(2026, 1, 27, 17, 0),
-                "allDay": False,
-            }
+            make_event(start=datetime(2026, 1, 26), end=datetime(2026, 1, 26, 23, 59),
+                       allDay=True, calendarIcon="mdi:trash-can"),
+            make_event(start=datetime(2026, 1, 26), end=datetime(2026, 1, 26, 23, 59),
+                       allDay=True, calendarIcon="mdi:recycle"),
         ]
+        result = get_collection_icons_for_day(events, TODAY)
+        assert len(result) == 2
+        assert "mdi:trash-can" in result
+        assert "mdi:recycle" in result
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 1)
-        self.assertFalse(result[0]["startsOnDay"])
-        self.assertFalse(result[0]["endsOnDay"])
-
-    def test_event_on_different_day(self):
-        """Test event on a different day is not included."""
+    def test_duplicate_icons_deduplicated(self):
         events = [
-            {
-                "id": "1",
-                "title": "Meeting",
-                "start": datetime(2026, 1, 27, 14, 0),
-                "end": datetime(2026, 1, 27, 15, 0),
-                "allDay": False,
-            }
+            make_event(start=datetime(2026, 1, 26), end=datetime(2026, 1, 26, 23, 59),
+                       allDay=True, calendarIcon="mdi:trash-can"),
+            make_event(start=datetime(2026, 1, 26), end=datetime(2026, 1, 26, 23, 59),
+                       allDay=True, calendarIcon="mdi:trash-can"),
         ]
+        result = get_collection_icons_for_day(events, TODAY)
+        assert len(result) == 1
 
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
+    def test_timed_events_ignored(self):
+        events = [make_event(
+            start=datetime(2026, 1, 26, 8, 0),
+            end=datetime(2026, 1, 26, 9, 0),
+            allDay=False,
+            calendarIcon="mdi:trash-can",
+        )]
+        result = get_collection_icons_for_day(events, TODAY)
+        assert len(result) == 0
 
-        self.assertEqual(len(result), 0)
+    def test_different_day_ignored(self):
+        events = [make_event(
+            start=datetime(2026, 1, 27),
+            end=datetime(2026, 1, 27, 23, 59),
+            allDay=True,
+            calendarIcon="mdi:trash-can",
+        )]
+        result = get_collection_icons_for_day(events, TODAY)
+        assert len(result) == 0
 
-    def test_event_ended_before_target_day(self):
-        """Test event that ended before target day is not included."""
-        events = [
-            {
-                "id": "1",
-                "title": "Past Event",
-                "start": datetime(2026, 1, 24, 14, 0),
-                "end": datetime(2026, 1, 25, 15, 0),
-                "allDay": False,
-            }
-        ]
-
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 0)
-
-    def test_multiple_events_on_same_day(self):
-        """Test multiple events on the same day."""
-        events = [
-            {
-                "id": "1",
-                "title": "Morning Meeting",
-                "start": datetime(2026, 1, 26, 9, 0),
-                "end": datetime(2026, 1, 26, 10, 0),
-                "allDay": False,
-            },
-            {
-                "id": "2",
-                "title": "Lunch",
-                "start": datetime(2026, 1, 26, 12, 0),
-                "end": datetime(2026, 1, 26, 13, 0),
-                "allDay": False,
-            },
-            {
-                "id": "3",
-                "title": "Afternoon Meeting",
-                "start": datetime(2026, 1, 26, 15, 0),
-                "end": datetime(2026, 1, 26, 16, 0),
-                "allDay": False,
-            },
-        ]
-
-        result = get_events_for_day(events, self.today)  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 3)
-
-
-class TestGetCollectionIconsForDay(unittest.TestCase):
-    """Test get_collection_icons_for_day function."""
-
-    def setUp(self):
-        """Set up test fixtures."""
-        self.today = datetime(2026, 1, 26, 10, 0, 0)
-
-    def test_collection_event_on_target_day(self):
-        """Test waste collection event on target day."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage Collection",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            }
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], "🗑️")
-
-    def test_multiple_collection_types_on_same_day(self):
-        """Test multiple collection types on the same day."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            },
-            {
-                "id": "2",
-                "title": "Recycling",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_recycling",
-                "calendarIcon": "♻️",
-            },
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage", "calendar.waste_recycling"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 2)
-        self.assertIn("🗑️", result)
-        self.assertIn("♻️", result)
-
-    def test_duplicate_icons_are_deduplicated(self):
-        """Test duplicate icons from same calendar are deduplicated."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage AM",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            },
-            {
-                "id": "2",
-                "title": "Garbage PM",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            },
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], "🗑️")
-
-    def test_non_collection_calendars_ignored(self):
-        """Test non-collection calendars are ignored."""
-        events = [
-            {
-                "id": "1",
-                "title": "Regular Event",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.personal",
-                "calendarIcon": "●",
-            },
-            {
-                "id": "2",
-                "title": "Garbage",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            },
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 1)
-        self.assertEqual(result[0], "🗑️")
-
-    def test_timed_collection_events_ignored(self):
-        """Test timed (non-all-day) collection events are ignored."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage",
-                "start": datetime(2026, 1, 26, 8, 0),
-                "end": datetime(2026, 1, 26, 9, 0),
-                "allDay": False,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            }
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 0)
-
-    def test_collection_on_different_day_ignored(self):
-        """Test collection events on different days are ignored."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage",
-                "start": datetime(2026, 1, 27, 0, 0),
-                "end": datetime(2026, 1, 27, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            }
-        ]
-        collection_calendar_ids = ["calendar.waste_garbage"]
-
-        result = get_collection_icons_for_day(  # type: ignore[arg-type]
-            events, self.today, collection_calendar_ids
-        )
-
-        self.assertEqual(len(result), 0)
-
-    def test_empty_collection_calendar_list(self):
-        """Test with empty collection calendar list."""
-        events = [
-            {
-                "id": "1",
-                "title": "Garbage",
-                "start": datetime(2026, 1, 26, 0, 0),
-                "end": datetime(2026, 1, 26, 23, 59),
-                "allDay": True,
-                "calendarId": "calendar.waste_garbage",
-                "calendarIcon": "🗑️",
-            }
-        ]
-
-        result = get_collection_icons_for_day(events, self.today, [])  # type: ignore[arg-type]
-
-        self.assertEqual(len(result), 0)
-
-
-if __name__ == "__main__":
-    unittest.main()
+    def test_empty_list(self):
+        result = get_collection_icons_for_day([], TODAY)
+        assert result == []

@@ -10,12 +10,11 @@ from datetime import datetime
 from pathlib import Path
 from typing import cast
 
-from ..renderer.types import CalendarEvent, RenderOptions, WeatherData
-
-# Add parent directory to path
+# Add parent directory to path so `from renderer.X import Y` works
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from ..renderer.renderer import render_to_png
+from renderer.types import CalendarEvent, RenderOptions, WeatherData
+from renderer.renderer import render_to_png
 
 
 def create_sample_data():

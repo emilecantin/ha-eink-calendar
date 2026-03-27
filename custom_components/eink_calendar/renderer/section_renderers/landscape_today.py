@@ -6,6 +6,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from ..event_filters import get_collection_icons_for_day, get_events_for_day
 from ..event_renderer import draw_event_triangle, draw_overflow_indicator
+from ..i18n import format_date, format_day_name
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, DISPLAY, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import wrap_text
@@ -23,6 +24,7 @@ def draw_landscape_today_section(
     legend: list[dict[str, str]] | None = None,
     waste_events: list[CalendarEvent] | None = None,
     img: Image.Image | None = None,
+    lang: str = "fr",
 ) -> None:
     """Draw the Today section in landscape layout (full-height left panel).
 
@@ -91,14 +93,14 @@ def draw_landscape_today_section(
 
         # Day name
         day_name_font = fonts["bold"][22]
-        day_name = today.strftime("%A").capitalize()
+        day_name = format_day_name(today, lang)
         draw.text(
             (header_x, header_y + 8), day_name, fill=text_color, font=day_name_font
         )
 
         # Full date
         date_font = fonts["bold"][28]
-        date_text = today.strftime("%d %B %Y")
+        date_text = format_date(today, lang)
         draw.text((header_x, header_y + 36), date_text, fill=text_color, font=date_font)
 
         # Weather info on the right
@@ -368,7 +370,7 @@ def draw_landscape_today_section(
         y = event_start_y + max_events * event_block_height - 6
         overflow_font = fonts["bold"][18]
         draw_overflow_indicator(
-            draw, overflow_font, header_x, y, more_count, language="fr"
+            draw, overflow_font, header_x, y, more_count, language=lang
         )
 
     # Collection icons above legend

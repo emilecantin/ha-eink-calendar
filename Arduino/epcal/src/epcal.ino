@@ -657,6 +657,17 @@ bool updateCalendar() {
   FetchResponse checkResponse = http_check_calendar(
     config.ha_url, endpoints.check, cache.etag, mac.c_str());
 
+  // Update refresh interval if HA sent a new one
+  if (checkResponse.refresh_interval > 0) {
+    uint32_t new_interval = checkResponse.refresh_interval * 60;
+    if (new_interval != config.refresh_interval) {
+      Serial.printf("Refresh interval updated: %d -> %d minutes\n",
+                    config.refresh_interval / 60, checkResponse.refresh_interval);
+      config.refresh_interval = new_interval;
+      config_save(&config);
+    }
+  }
+
   if (checkResponse.result == FETCH_NOT_MODIFIED) {
     Serial.println("Calendar unchanged (304), skipping display refresh");
     return true;

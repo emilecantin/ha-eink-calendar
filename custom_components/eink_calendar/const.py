@@ -6,6 +6,7 @@ DOMAIN = "eink_calendar"
 DEFAULT_NAME = "E-Ink Calendar"
 DEFAULT_LAYOUT = "landscape"
 DEFAULT_SHOW_LEGEND = True
+DEFAULT_LANGUAGE = "fr"
 DEFAULT_REFRESH_INTERVAL = 15  # minutes
 
 # Entity naming
@@ -29,6 +30,7 @@ CONF_FONT_MEDIUM = "font_medium"
 CONF_FONT_BOLD = "font_bold"
 CONF_MAC_ADDRESS = "mac_address"
 CONF_FIRMWARE_VERSION = "firmware_version"
+CONF_LANGUAGE = "language"
 CONF_REFRESH_INTERVAL = "refresh_interval"
 CONF_WASTE_ICON_MAP = "waste_icon_map"
 

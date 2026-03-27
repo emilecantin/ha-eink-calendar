@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 
 from PIL import Image, ImageDraw
 
+from ..i18n import format_month_abbr
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import truncate_text
@@ -17,6 +18,7 @@ def draw_landscape_upcoming_section(
     today: datetime,
     is_red: bool,
     img: Image.Image | None = None,
+    lang: str = "fr",
 ) -> None:
     """Draw the Upcoming section in landscape layout (lower right panel).
 
@@ -121,12 +123,10 @@ def draw_landscape_upcoming_section(
 
             if is_multi_day:
                 # Format: "JAN 25-27"
-                start_str = event_start.strftime("%b %d")
-                end_str = event_end.strftime("%d")
-                date_str = f"{start_str}-{end_str}".upper()
+                date_str = f"{format_month_abbr(event_start, lang)} {event_start.day}-{event_end.day}"
             else:
                 # Format: "JAN 25"
-                date_str = event_start.strftime("%b %d").upper()
+                date_str = f"{format_month_abbr(event_start, lang)} {event_start.day}"
 
             draw.text((x, y), date_str, fill=COLORS["BLACK"], font=date_font)
 

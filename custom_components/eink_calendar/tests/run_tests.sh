@@ -1,37 +1,21 @@
-#!/bin/bash
-# Test runner script for E-Ink Calendar integration
+#!/usr/bin/env bash
+# Run all renderer unit tests.
+# Usage: ./run_tests.sh [pytest args...]
+#   e.g. ./run_tests.sh -k "weather"
+#        ./run_tests.sh --no-header -q
 
-set -e
+set -euo pipefail
 
-echo "================================================"
-echo "E-Ink Calendar Integration Test Suite"
-echo "================================================"
-echo ""
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# Repo root is epcal/ (3 levels up from tests/)
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+VENV="$REPO_ROOT/.venv"
 
-cd "$(dirname "$0")"
+if [ ! -d "$VENV" ]; then
+    echo "Creating venv and installing dependencies..."
+    python3 -m venv "$VENV"
+    "$VENV/bin/pip" install -q pytest pillow python-dateutil
+fi
 
-# Run unit tests
-echo "Running unit tests..."
-echo "--------------------"
-
-python3 -m unittest test_event_filters.py
-echo "✓ Event filters tests passed"
-
-python3 -m unittest test_weather_utils.py
-echo "✓ Weather utils tests passed"
-
-python3 -m unittest test_event_renderer.py
-echo "✓ Event renderer tests passed"
-
-# Run integration tests
-echo ""
-echo "Running integration tests..."
-echo "-----------------------------"
-
-python3 -m unittest test_renderer_integration.py
-echo "✓ Renderer integration tests passed"
-
-echo ""
-echo "================================================"
-echo "All tests passed! ✓"
-echo "================================================"
+cd "$SCRIPT_DIR"
+exec "$VENV/bin/python" -m pytest "$@"

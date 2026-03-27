@@ -4,7 +4,7 @@
 import sys
 from pathlib import Path
 from typing import cast
-from ..renderer.types import CalendarEvent
+from renderer.types import CalendarEvent
 
 # Add parent directories to Python path to allow imports
 repo_root = Path(__file__).parent.parent.parent.parent

@@ -18,6 +18,7 @@ from .const import (
     CONF_FONT_BOLD,
     CONF_FONT_MEDIUM,
     CONF_FONT_REGULAR,
+    CONF_LANGUAGE,
     CONF_LAYOUT,
     CONF_MAC_ADDRESS,
     CONF_REFRESH_INTERVAL,
@@ -25,6 +26,7 @@ from .const import (
     CONF_WASTE_CALENDARS,
     CONF_WASTE_ICON_MAP,
     CONF_WEATHER_ENTITY,
+    DEFAULT_LANGUAGE,
     DEFAULT_LAYOUT,
     DEFAULT_NAME,
     DEFAULT_REFRESH_INTERVAL,
@@ -68,6 +70,7 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                     CONF_CALENDARS: [],
                     CONF_WASTE_CALENDARS: [],
                     CONF_WASTE_ICON_MAP: {},
+                    CONF_LANGUAGE: DEFAULT_LANGUAGE,
                     CONF_LAYOUT: DEFAULT_LAYOUT,
                     CONF_SHOW_LEGEND: DEFAULT_SHOW_LEGEND,
                     CONF_WEATHER_ENTITY: None,
@@ -147,6 +150,7 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                     CONF_CALENDARS: user_input.get(CONF_CALENDARS, []),
                     CONF_WASTE_CALENDARS: user_input.get(CONF_WASTE_CALENDARS, []),
                     CONF_WASTE_ICON_MAP: {},
+                    CONF_LANGUAGE: user_input.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
                     CONF_LAYOUT: user_input.get(CONF_LAYOUT, DEFAULT_LAYOUT),
                     CONF_SHOW_LEGEND: user_input.get(
                         CONF_SHOW_LEGEND, DEFAULT_SHOW_LEGEND
@@ -188,6 +192,17 @@ class EinkCalendarConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):  # type:
                         selector.EntitySelectorConfig(
                             domain="calendar",
                             multiple=True,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_LANGUAGE, default=DEFAULT_LANGUAGE
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                {"value": "fr", "label": "Français"},
+                                {"value": "en", "label": "English"},
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Optional(
@@ -289,6 +304,18 @@ class EinkCalendarOptionsFlow(config_entries.OptionsFlow):
                         selector.EntitySelectorConfig(
                             domain="calendar",
                             multiple=True,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_LANGUAGE,
+                        default=options.get(CONF_LANGUAGE, DEFAULT_LANGUAGE),
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                {"value": "fr", "label": "Français"},
+                                {"value": "en", "label": "English"},
+                            ],
+                            mode=selector.SelectSelectorMode.DROPDOWN,
                         ),
                     ),
                     vol.Optional(

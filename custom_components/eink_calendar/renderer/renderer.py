@@ -5,7 +5,6 @@ The adjustment (subtract 1 day) is applied in _process_events().
 See docs/calendar-event-handling.md for the full explanation.
 """
 
-import locale
 import logging
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -15,6 +14,7 @@ from PIL import Image, ImageDraw
 
 from .bitmap_utils import calculate_etag, extract_chunk, image_to_1bit
 from .font_loader import get_fonts
+from .i18n import format_date, format_day_abbr, format_day_name, format_month_abbr
 from .layout_config import COLORS, DISPLAY
 from .section_renderers.landscape_today import draw_landscape_today_section
 from .section_renderers.landscape_upcoming import draw_landscape_upcoming_section
@@ -22,15 +22,6 @@ from .section_renderers.landscape_week import draw_landscape_week_section
 from .types import CalendarEvent, RenderOptions, WeatherData
 
 _LOGGER = logging.getLogger(__name__)
-
-# Set French locale for date formatting
-try:
-    locale.setlocale(locale.LC_TIME, "fr_CA.UTF-8")
-except locale.Error:
-    try:
-        locale.setlocale(locale.LC_TIME, "fr_FR.UTF-8")
-    except locale.Error:
-        _LOGGER.warning("Could not set French locale, dates will be in English")
 
 
 class RenderedCalendar:
@@ -93,6 +84,7 @@ def render_calendar(
 
     # Load fonts
     fonts = get_fonts(options)
+    lang = options.get("language", "fr")
 
     # Process events separately — waste events are only used for collection icons
     processed_events = _process_events(calendar_events)
@@ -105,14 +97,16 @@ def render_calendar(
         draw_landscape_today_section(
             draw, fonts, processed_events, now, is_red=is_red,
             weather_data=weather_data, legend=legend,
-            waste_events=processed_waste,
+            waste_events=processed_waste, lang=lang,
         )
         draw_landscape_week_section(
             draw, fonts, processed_events, now, is_red=is_red,
             weather_data=weather_data, waste_events=processed_waste,
+            lang=lang,
         )
         draw_landscape_upcoming_section(
             draw, fonts, processed_events, now, is_red=is_red,
+            lang=lang,
         )
 
     # Create black layer
@@ -221,6 +215,7 @@ def _process_events(events: list[CalendarEvent]) -> list[CalendarEvent]:
                 "allDay": all_day,
                 "calendarIcon": calendar_icon,
                 "calendarId": event.get("calendar_id", ""),
+                "calendarName": event.get("calendar_name"),
             }
         )
 

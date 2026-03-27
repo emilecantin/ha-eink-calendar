@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from ..renderer.renderer import render_to_png
+from renderer.renderer import render_to_png
 
 
 class TestVisualRegression(unittest.TestCase):

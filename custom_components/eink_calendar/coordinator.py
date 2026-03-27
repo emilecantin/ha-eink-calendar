@@ -26,16 +26,13 @@ _LOGGER = logging.getLogger(__name__)
 class EinkCalendarDataCoordinator(DataUpdateCoordinator):
     """Class to manage fetching calendar and weather data."""
 
-    NORMAL_INTERVAL = timedelta(minutes=15)
-    RETRY_INTERVAL = timedelta(seconds=30)
-
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Initialize coordinator."""
         super().__init__(
             hass,
             _LOGGER,
             name=DOMAIN,
-            update_interval=self.NORMAL_INTERVAL,
+            update_interval=None,  # No polling — refreshed on ESP32 check-in
         )
         self.entry = entry
         self._last_render_day: datetime | None = None
@@ -47,6 +44,11 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Record a device check-in and notify listeners (sensors)."""
         self.last_checkin = dt_util.now()
         self.async_set_updated_data(self.data)
+
+    def invalidate_render_cache(self) -> None:
+        """Clear the cached render so the next request triggers a fresh render."""
+        self._cached_render = None
+        self._cached_render_timestamp = None
 
     async def async_get_rendered(self):
         """Get cached rendered calendar, re-rendering only when data changes."""
@@ -73,13 +75,6 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self._cached_render_timestamp = data_ts
         return rendered
 
-    def _has_configured_calendars(self) -> bool:
-        """Check if any calendars are configured."""
-        return bool(
-            self.entry.options.get(CONF_CALENDARS, [])
-            or self.entry.options.get(CONF_WASTE_CALENDARS, [])
-        )
-
     async def _async_update_data(self) -> dict[str, Any]:
         """Fetch data from calendars and weather."""
         try:
@@ -98,33 +93,17 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             # Fetch weather data
             weather_data = await self._fetch_weather_data()
 
-            # If data sources are configured but returned nothing, the
-            # integrations likely haven't synced yet (common after HA restart).
-            # Use a shorter retry interval until we get data.
-            has_calendars = self._has_configured_calendars()
-            has_events = bool(calendar_events or waste_events)
-            has_weather = weather_data is not None
+            # Fail if configured data sources aren't ready yet
+            has_calendars = bool(
+                self.entry.options.get(CONF_CALENDARS, [])
+                or self.entry.options.get(CONF_WASTE_CALENDARS, [])
+            )
             expects_weather = bool(self.entry.options.get(CONF_WEATHER_ENTITY))
 
-            missing_data = (has_calendars and not has_events) or (
-                expects_weather and not has_weather
-            )
-
-            if missing_data:
-                if self.update_interval != self.RETRY_INTERVAL:
-                    _LOGGER.info(
-                        "Missing data from configured sources — "
-                        "retrying in %s (integrations may still be syncing)",
-                        self.RETRY_INTERVAL,
-                    )
-                self.update_interval = self.RETRY_INTERVAL
-            else:
-                if self.update_interval != self.NORMAL_INTERVAL:
-                    _LOGGER.info(
-                        "All data sources loaded, resuming normal %s interval",
-                        self.NORMAL_INTERVAL,
-                    )
-                self.update_interval = self.NORMAL_INTERVAL
+            if has_calendars and not (calendar_events or waste_events):
+                raise UpdateFailed("Calendar entities not ready yet")
+            if expects_weather and weather_data is None:
+                raise UpdateFailed("Weather entity not ready yet")
 
             result = {
                 "calendar_events": calendar_events,
@@ -134,18 +113,21 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             }
 
             # Pre-render so camera/image entities serve instantly
-            from .renderer.renderer import render_calendar
+            try:
+                from .renderer.renderer import render_calendar
 
-            rendered = await self.hass.async_add_executor_job(
-                render_calendar,
-                calendar_events,
-                waste_events,
-                weather_data,
-                now,
-                self.entry.options,
-            )
-            self._cached_render = rendered
-            self._cached_render_timestamp = now
+                rendered = await self.hass.async_add_executor_job(
+                    render_calendar,
+                    calendar_events,
+                    waste_events,
+                    weather_data,
+                    now,
+                    self.entry.options,
+                )
+                self._cached_render = rendered
+                self._cached_render_timestamp = now
+            except Exception as render_err:
+                _LOGGER.error("Pre-render failed: %s", render_err, exc_info=True)
 
             return result
         except Exception as err:

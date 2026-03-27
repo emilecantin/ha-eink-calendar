@@ -6,6 +6,7 @@ from PIL import Image, ImageChops, ImageDraw, ImageOps
 
 from ..event_filters import get_collection_icons_for_day, get_events_for_day
 from ..event_renderer import draw_overflow_indicator, sort_events_by_priority
+from ..i18n import format_day_abbr
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, DISPLAY, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import wrap_text
@@ -22,6 +23,7 @@ def draw_landscape_week_section(
     weather_data: WeatherData | None = None,
     waste_events: list[CalendarEvent] | None = None,
     img: Image.Image | None = None,
+    lang: str = "fr",
 ) -> None:
     """Draw the Week section in landscape layout (6-day columns).
 
@@ -144,7 +146,7 @@ def draw_landscape_week_section(
 
             # 3-letter day name
             day_name_font = fonts["bold"][18]
-            day_name = day.strftime("%a")[:3].upper()
+            day_name = format_day_abbr(day, lang)
             draw.text(
                 (left_margin, grid_top + 10),
                 day_name,
@@ -377,7 +379,7 @@ def draw_landscape_week_section(
             more_count = len(day_events_with_indicators) - max_events_to_show
             overflow_font = fonts["bold"][14]
             draw_overflow_indicator(
-                draw, overflow_font, day_x + 5, overflow_y, more_count, language="fr"
+                draw, overflow_font, day_x + 5, overflow_y, more_count, language=lang
             )
 
         # Collection icons (lower right corner)

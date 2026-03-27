@@ -126,15 +126,16 @@ FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
   response.new_etag[0] = '\0';
   response.http_code = 0;
   response.bytes_read = 0;
+  response.refresh_interval = -1;
 
   HTTPClient http;
   String url = String(ha_url) + check_path;
 
   httpBegin(http, url);
 
-  // Must collect ETag header before request
-  const char* headerKeys[] = {"ETag"};
-  http.collectHeaders(headerKeys, 1);
+  // Must collect headers before request
+  const char* headerKeys[] = {"ETag", "X-Refresh-Interval"};
+  http.collectHeaders(headerKeys, 2);
 
   // Add MAC header for authentication
   http.addHeader("X-MAC", mac);
@@ -146,6 +147,11 @@ FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
 
   int httpCode = http.GET();
   response.http_code = httpCode;
+
+  // Read refresh interval from header (present on both 200 and 304)
+  if (http.hasHeader("X-Refresh-Interval")) {
+    response.refresh_interval = http.header("X-Refresh-Interval").toInt();
+  }
 
   if (httpCode == 304) {
     response.result = FETCH_NOT_MODIFIED;

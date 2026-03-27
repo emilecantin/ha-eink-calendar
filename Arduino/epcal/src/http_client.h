@@ -17,6 +17,7 @@ struct FetchResponse {
   char new_etag[33];   // ETag from response (if 200)
   int http_code;       // HTTP status code
   size_t bytes_read;   // Number of bytes downloaded
+  int refresh_interval; // From X-Refresh-Interval header (-1 if absent)
 };
 
 // Announce status

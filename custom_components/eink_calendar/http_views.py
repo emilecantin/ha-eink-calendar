@@ -149,10 +149,13 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 )
                 return web.Response(text="Unauthorized", status=403)
 
-            # Record device check-in
+            # Get coordinator
             coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
-            if coordinator:
-                coordinator.record_checkin()
+            if not coordinator:
+                return web.Response(text="Device not ready", status=503)
+
+            # Record device check-in
+            coordinator.record_checkin()
 
             # Validate layer name
             valid_layers = [
@@ -164,25 +167,32 @@ class EinkCalendarBitmapView(HomeAssistantView):
                     status=400,
                 )
 
-            # Get coordinator and cached render
-            coordinator = self.hass.data[DOMAIN].get(entry_id)
-            if not coordinator:
-                return web.Response(text="Device not ready", status=503)
+            # On check requests, refresh data first so the ESP32
+            # gets an ETag based on the latest calendar/weather
+            if layer == "check":
+                await coordinator.async_request_refresh()
 
             rendered = await coordinator.async_get_rendered()
             if rendered is None:
                 return web.Response(text="No calendar data available", status=503)
 
             etag = rendered.etag
+            refresh_interval = str(entry.options.get("refresh_interval", 15))
 
             # Check If-None-Match (applies to both check and layer requests)
             if_none_match = request.headers.get("If-None-Match")
             if if_none_match and if_none_match == etag:
-                return web.Response(status=304)
+                return web.Response(
+                    status=304,
+                    headers={"X-Refresh-Interval": refresh_interval},
+                )
 
             # ETag-only check endpoint
             if layer == "check":
-                return web.Response(status=200, headers={"ETag": etag})
+                return web.Response(
+                    status=200,
+                    headers={"ETag": etag, "X-Refresh-Interval": refresh_interval},
+                )
 
             # Get the appropriate chunk
             chunk = None
