@@ -238,7 +238,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
                 # 200 with JSON body describing what changed
                 response_data = {
-                    "refresh_interval": int(refresh_interval),
+                    "refresh_interval": int(float(refresh_interval)),
                 }
                 if image_changed:
                     response_data["etag"] = etag
