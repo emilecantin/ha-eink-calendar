@@ -53,6 +53,12 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                     if coordinator:
                         coordinator.record_checkin()
 
+                    _LOGGER.warning(
+                        "Announce: MAC=%s configured, entry_id=%s",
+                        mac,
+                        entry.entry_id,
+                    )
+
                     # Device is already configured
                     return self.json(
                         {
@@ -130,9 +136,14 @@ class EinkCalendarBitmapView(HomeAssistantView):
     ) -> web.Response:
         """Serve bitmap layer."""
         try:
+            _LOGGER.warning(
+                "Bitmap request: entry_id=%s, layer=%s", entry_id, layer,
+            )
+
             # Find the config entry
             entry = self.hass.config_entries.async_get_entry(entry_id)
             if not entry or entry.domain != DOMAIN:
+                _LOGGER.warning("Unknown entry_id: %s", entry_id)
                 return web.Response(text="Unknown device", status=404)
 
             # Verify MAC address from request header
@@ -187,7 +198,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
             # Check If-None-Match (applies to both check and layer requests)
             if_none_match = request.headers.get("If-None-Match")
             if layer == "check":
-                _LOGGER.info(
+                _LOGGER.warning(
                     "Check request: If-None-Match=%s, current ETag=%s, match=%s",
                     if_none_match,
                     etag,
