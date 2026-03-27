@@ -25,8 +25,10 @@ _HA_MODULES = [
     "homeassistant.core",
     "homeassistant.helpers",
     "homeassistant.helpers.device_registry",
+    "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.entity_registry",
     "homeassistant.helpers.update_coordinator",
+    "homeassistant.components.sensor",
     "homeassistant.util",
     "homeassistant.util.dt",
     "aiohttp",
@@ -35,3 +37,74 @@ _HA_MODULES = [
 ]
 for mod in _HA_MODULES:
     sys.modules.setdefault(mod, MagicMock())
+
+
+# Provide real base classes so our code can inherit properly.
+# HA's _attr_* pattern: setting _attr_foo makes self.foo return that value.
+class _FakeEntity:
+    """Minimal Entity base that supports HA's _attr_* property pattern."""
+
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+
+    @property
+    def name(self):
+        return getattr(self, "_attr_name", None)
+
+    @property
+    def unique_id(self):
+        return getattr(self, "_attr_unique_id", None)
+
+    @property
+    def icon(self):
+        return getattr(self, "_attr_icon", None)
+
+    @property
+    def device_class(self):
+        return getattr(self, "_attr_device_class", None)
+
+    @property
+    def device_info(self):
+        return getattr(self, "_attr_device_info", None)
+
+
+class _FakeSensorEntity(_FakeEntity):
+    """Minimal SensorEntity stand-in."""
+
+    @property
+    def native_value(self):
+        return getattr(self, "_attr_native_value", None)
+
+
+class _FakeDataUpdateCoordinator:
+    """Minimal DataUpdateCoordinator stand-in."""
+
+    def __init__(self, hass, logger, *, name, update_interval):
+        self.hass = hass
+        self.logger = logger
+        self.name = name
+        self.update_interval = update_interval
+        self.data = None
+        self.last_update_success = True
+        self._listeners = []
+
+    def async_set_updated_data(self, data):
+        self.data = data
+        for callback in self._listeners:
+            callback()
+
+    def async_add_listener(self, callback):
+        self._listeners.append(callback)
+        return lambda: self._listeners.remove(callback)
+
+    async def async_request_refresh(self):
+        pass
+
+
+# Patch the real base classes into the mocked modules
+sys.modules["homeassistant.components.sensor"].SensorEntity = _FakeSensorEntity
+sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MagicMock()
+sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
+    _FakeDataUpdateCoordinator
+)
+sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = Exception

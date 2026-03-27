@@ -37,12 +37,15 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self.entry = entry
         self._last_render_day: datetime | None = None
         self.last_checkin: datetime | None = None
+        self.firmware_version: str = "unknown"
         self._cached_render = None
         self._cached_render_timestamp: datetime | None = None
 
-    def record_checkin(self) -> None:
+    def record_checkin(self, firmware_version: str | None = None) -> None:
         """Record a device check-in and notify listeners (sensors)."""
         self.last_checkin = dt_util.now()
+        if firmware_version is not None:
+            self.firmware_version = firmware_version
         self.async_set_updated_data(self.data)
 
     def invalidate_render_cache(self) -> None:

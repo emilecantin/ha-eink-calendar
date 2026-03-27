@@ -17,7 +17,7 @@ epcal/
 │   ├── coordinator.py          # Data coordinator (calendar/weather)
 │   ├── camera.py               # Preview camera entity
 │   ├── image.py                # Bitmap image entities
-│   ├── sensor.py               # Last update sensor
+│   ├── sensor.py               # Sensor entities (last update, last check-in, firmware version)
 │   ├── http_views.py           # Announce API + bitmap serving
 │   ├── services.py             # trigger_render + upload_firmware services
 │   ├── firmware_manager.py     # Firmware binary storage for OTA
