@@ -34,6 +34,9 @@ Pass any pytest arguments through the script:
 | `test_weather_utils.py` | `get_forecast_for_date` (matching, missing data, timezone handling) |
 | `test_renderer_integration.py` | Full `render_calendar` + `render_to_png` pipeline, legend creation |
 | `test_firmware_sensor.py` | Firmware version sensor entity (value from coordinator, listener registration) |
+| `test_firmware.py` | Firmware management module (binary storage, version parsing) |
+| `test_services.py` | Service handlers (trigger_render, force_refresh across coordinators) |
+| `test_announce_ota.py` | OTA metadata in announce response (version comparison, firmware_update field) |
 | `test_visual_regression.py` | Renders various scenarios to PNG for visual inspection |
 
 ### Visual Regression

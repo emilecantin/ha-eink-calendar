@@ -18,6 +18,7 @@ epcal/
 │   ├── camera.py               # Preview camera entity
 │   ├── image.py                # Bitmap image entities
 │   ├── sensor.py               # Sensor entities (last update, last check-in, firmware version)
+│   ├── button.py               # Force refresh button entity
 │   ├── http_views.py           # Announce API + bitmap serving
 │   ├── services.py             # trigger_render + upload_firmware services
 │   ├── firmware_manager.py     # Firmware binary storage for OTA
@@ -136,14 +137,22 @@ curl http://localhost:8123/api/eink_calendar/bitmap/{entry_id}/black_top \
 ### Building and uploading
 
 ```bash
-cd /Users/emilecantin/Documents/Projets/iot/epcal/Arduino/epcal
-pio run -t upload
+# Build only
+make build
+
+# Build and upload via USB
+make upload
+# or: pio run -d Arduino/epcal -t upload
+
+# Build firmware and bundle into HA integration (for OTA distribution)
+make bundle
 ```
 
 ### Monitoring serial output
 
 ```bash
-pio device monitor -b 115200
+make monitor
+# or: pio device monitor -d Arduino/epcal -b 115200
 ```
 
 ### Firmware Flow
@@ -153,9 +162,10 @@ pio device monitor -b 115200
 3. POST `/api/eink_calendar/announce` with MAC/name/firmware (re-announces every boot, even if already configured, to check for OTA)
 4. If "pending" → show "Waiting for HA" on display, sleep 30s, retry
 5. If "configured" → store entry_id + endpoints
-6. If OTA available → download and flash firmware via `http_ota_update()`, reboot (streaming 4KB buffer with watchdog management and stall detection)
-7. ETag check + fetch bitmaps if changed
-8. Display bitmaps, deep sleep for refresh_interval
+6. If OTA available → download and flash firmware via `http_ota_update()`, reboot (streaming 4KB buffer with watchdog management and stall detection). OTA has a retry limit of 3 attempts tracked in RTC memory to prevent crash loops.
+7. ETag check (sends `X-Firmware-Version` header) + fetch bitmaps if changed
+8. Download bitmap chunks to LittleFS, then init display and stream from LittleFS to SPI
+9. Deep sleep for refresh_interval
 
 ## Display Specifications
 
@@ -180,7 +190,7 @@ EPD_12in48B_Init();    // Initialize display controller
 
 - 1-bit per pixel, MSB first
 - 1 = white, 0 = black
-- Split into 4 chunks (~80KB each) for ESP32 memory constraints
+- Split into 4 chunks (~80KB each), staged to LittleFS before display update
 
 ### Paint Library Parameter Order
 
@@ -208,6 +218,10 @@ Hold BOOT button (GPIO0) for 2 seconds during startup to enter config mode. Disp
 6. **MAC-based auth**: Bitmap endpoints verify X-MAC header matches config entry
 7. **Pre-rendered setup screen**: Avoids runtime QR generation on ESP32
 8. **Inter font**: Optimized for e-paper readability
+9. **LittleFS chunk staging**: Bitmap chunks are downloaded to LittleFS before display init, avoiding SPI bus conflicts between WiFi and e-paper
+10. **OTA with retry limit**: Firmware updates use RTC memory to track attempts (max 3), preventing crash loops from bad firmware
+11. **Semver-gated OTA**: HA only offers firmware when the bundled version is strictly newer than the device's reported version (no downgrades)
+12. **`make bundle` pipeline**: Builds firmware and copies `.bin` + `.version` into the HA integration directory for OTA distribution
 
 ## Development Workflow
 

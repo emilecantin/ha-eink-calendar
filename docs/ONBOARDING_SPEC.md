@@ -294,12 +294,14 @@ Needs matching `strings.json` entry for the confirm step description.
 1. **ETag check**: GET `{ha_url}{endpoints.check}` with headers:
    - `If-None-Match: {cached_etag}`
    - `X-MAC: AA:BB:CC:DD:EE:FF`
+   - `X-Firmware-Version: {firmware_version}` (used by HA to update the firmware version sensor)
 
 2. HA `EinkCalendarBitmapView.get()` processes:
    - Validates entry_id exists and belongs to `eink_calendar` domain
    - Validates `X-MAC` header matches the config entry's MAC
+   - Updates firmware version from `X-Firmware-Version` header (if present)
    - Computes ETag from coordinator data timestamp
-   - If ETag matches → return **304 Not Modified**
+   - If ETag matches and no force refresh pending → return **304 Not Modified**
 
 3. **If 304**: ESP32 skips display refresh, updates `last_check_epoch`, deep sleeps.
 
@@ -312,11 +314,12 @@ Needs matching `strings.json` entry for the confirm step description.
 5. For each layer:
    - HA renders the calendar on-demand from coordinator data
    - Returns binary bitmap (~80KB per chunk) with ETag header
-   - ESP32 writes chunk directly to display memory via SPI
+   - ESP32 stages chunk to LittleFS
 
-6. ESP32 triggers display refresh (~37 seconds for tri-color).
-7. Saves new ETag to cache.
-8. Disconnects WiFi, enters deep sleep for `refresh_interval` seconds.
+6. ESP32 initializes display, reads chunks from LittleFS to display memory via SPI.
+7. ESP32 triggers display refresh (~37 seconds for tri-color).
+8. Saves new ETag to cache.
+9. Disconnects WiFi, enters deep sleep for `refresh_interval` seconds.
 
 ### Rendering on HA side
 
