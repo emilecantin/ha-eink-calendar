@@ -1,3 +1,22 @@
 trigger_render:
   name: Trigger Render
   description: Force a manual re-render of the calendar display
+
+upload_firmware:
+  name: Upload Firmware
+  description: Upload a firmware binary for OTA updates to ESP32 devices
+  fields:
+    file_path:
+      name: File Path
+      description: Local path to the firmware .bin file
+      required: true
+      example: "/config/firmware.bin"
+      selector:
+        text:
+    version:
+      name: Version
+      description: Firmware version string (e.g., "1.1.0")
+      required: true
+      example: "1.1.0"
+      selector:
+        text:

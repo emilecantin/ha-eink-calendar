@@ -13,8 +13,10 @@ from .const import (
     CONF_DEVICE_NAME,
     CONF_MAC_ADDRESS,
     DOMAIN,
+    FIRMWARE_MANAGER_KEY,
 )
 from .coordinator import EinkCalendarDataCoordinator
+from .firmware_manager import FirmwareManager
 from .http_views import setup_http_views
 from .services import async_setup_services, async_unload_services
 
@@ -34,6 +36,14 @@ def ensure_http_views(hass: HomeAssistant) -> None:
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the E-Ink Calendar integration (called before config entries)."""
+    hass.data.setdefault(DOMAIN, {})
+
+    # Initialize firmware manager (stores binaries in HA config dir)
+    if FIRMWARE_MANAGER_KEY not in hass.data[DOMAIN]:
+        hass.data[DOMAIN][FIRMWARE_MANAGER_KEY] = FirmwareManager(
+            hass.config.config_dir
+        )
+
     # Register HTTP views early so the announce endpoint is available
     # before any device is configured
     ensure_http_views(hass)
