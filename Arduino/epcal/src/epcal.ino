@@ -248,9 +248,9 @@ void setup() {
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
   // Start mDNS and advertise our service so HA's zeroconf can discover us
-  String hostname = "eink-cal-" + getDeviceMac().substring(getDeviceMac().length() - 5);
+  String mac = getDeviceMac();
+  String hostname = "eink-cal-" + mac.substring(mac.length() - 5);
   if (MDNS.begin(hostname.c_str())) {
-    String mac = getDeviceMac();
     MDNS.addService("eink-calendar", "tcp", 80);
     MDNS.addServiceTxt("eink-calendar", "tcp", "mac", mac.c_str());
     MDNS.addServiceTxt("eink-calendar", "tcp", "fw", FIRMWARE_VERSION);
@@ -350,7 +350,7 @@ bool tryAnnounce(const char* ha_url) {
     config.ha_url[sizeof(config.ha_url) - 1] = '\0';
     strncpy(config.entry_id, resp.entry_id, sizeof(config.entry_id) - 1);
     config.entry_id[sizeof(config.entry_id) - 1] = '\0';
-    config.refresh_interval = resp.refresh_interval * 60;  // Convert to seconds
+    config.refresh_interval = max(resp.refresh_interval, (uint32_t)1) * 60;  // Convert to seconds (floor: 1 min)
     config.discovered = true;
     config.configured = true;
     config_save(&config);
@@ -711,6 +711,7 @@ bool updateCalendar() {
     config.ha_url, endpoints.check, cache.etag, mac.c_str(), FIRMWARE_VERSION);
 
   // Update refresh interval if HA sent a new one
+  // Note: the > 0 guard already excludes zero, so no floor needed
   if (checkResponse.refresh_interval > 0) {
     uint32_t new_interval = checkResponse.refresh_interval * 60;
     if (new_interval != config.refresh_interval) {

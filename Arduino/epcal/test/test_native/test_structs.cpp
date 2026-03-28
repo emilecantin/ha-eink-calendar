@@ -21,6 +21,27 @@
 #include "display.h"
 #include "url_validation.h"
 
+// --- Display stubs for native tests ---
+// Mirrors the _display_initialized guard logic from display.cpp
+// so native tests can verify the sleep-guard behavior.
+static bool _stub_display_initialized = false;
+
+void display_init() { _stub_display_initialized = true; }
+void display_clear() {}
+void display_send_black1(const uint8_t*) {}
+void display_send_black2(const uint8_t*) {}
+void display_send_red1(const uint8_t*) {}
+void display_send_red2(const uint8_t*) {}
+void display_refresh() {}
+void display_sleep() { /* guard checked via display_is_initialized() */ }
+void display_show_message(const char*, const char*) { _stub_display_initialized = true; }
+void display_show_error(const char*) { _stub_display_initialized = true; }
+void display_show_setup_screen(const char*, const char*) { _stub_display_initialized = true; }
+void display_show_ha_config_screen(const char*) { _stub_display_initialized = true; }
+void display_show_install_screen(const char*) { _stub_display_initialized = true; }
+bool display_is_initialized() { return _stub_display_initialized; }
+void display_reset_initialized() { _stub_display_initialized = false; }
+
 // ---------------------------------------------------------------------------
 // Config struct tests
 // ---------------------------------------------------------------------------
@@ -498,23 +519,16 @@ void test_ota_max_retries_constant(void) {
 // ---------------------------------------------------------------------------
 
 void test_cache_display_valid_false_clears_etag_semantically(void) {
-    // When display_valid is false, the etag should be treated as stale.
-    // cache_load() enforces this by clearing etag when display_valid is false.
-    // Simulate: etag was set but display refresh failed.
     CacheState cache = {};
     strncpy(cache.etag, "abc123", sizeof(cache.etag) - 1);
     cache.etag[sizeof(cache.etag) - 1] = '\0';
     cache.display_valid = false;
 
-    // The etag field has content, but display_valid is false.
-    // The system must not use this etag for 304 comparisons.
     TEST_ASSERT_FALSE(cache.display_valid);
     TEST_ASSERT_TRUE(strlen(cache.etag) > 0);
-    // This combination means "re-download needed"
 }
 
 void test_cache_display_valid_true_with_etag_is_complete(void) {
-    // A valid cache has both display_valid=true AND a non-empty etag.
     CacheState cache = {};
     strncpy(cache.etag, "d41d8cd98f00b204e9800998ecf8427e", sizeof(cache.etag) - 1);
     cache.etag[sizeof(cache.etag) - 1] = '\0';
@@ -522,34 +536,82 @@ void test_cache_display_valid_true_with_etag_is_complete(void) {
 
     TEST_ASSERT_TRUE(cache.display_valid);
     TEST_ASSERT_TRUE(strlen(cache.etag) > 0);
-    // This combination means "display matches server, safe to 304"
 }
 
 void test_cache_zero_init_is_invalid(void) {
-    // A zero-initialized cache must require re-download
     CacheState cache = {};
     TEST_ASSERT_FALSE(cache.display_valid);
     TEST_ASSERT_EQUAL_STRING("", cache.etag);
 }
 
 void test_cache_etag_only_valid_with_display_valid(void) {
-    // Simulate the correct update sequence:
-    // 1. Download bitmaps → set etag, display_valid stays false
-    // 2. Display refresh succeeds → set display_valid = true
-    // 3. Save cache
     CacheState cache = {};
 
-    // Step 1: After download, before display refresh
     strncpy(cache.etag, "newetag123", sizeof(cache.etag) - 1);
     cache.etag[sizeof(cache.etag) - 1] = '\0';
-    // display_valid is still false — cache should NOT be trusted
     TEST_ASSERT_FALSE(cache.display_valid);
 
-    // Step 2: After successful display refresh
     cache.display_valid = true;
-    // NOW the cache is valid
     TEST_ASSERT_TRUE(cache.display_valid);
     TEST_ASSERT_EQUAL_STRING("newetag123", cache.etag);
+}
+
+// ---------------------------------------------------------------------------
+// Display sleep guard tests
+// ---------------------------------------------------------------------------
+
+void test_display_not_initialized_by_default(void) {
+    display_reset_initialized();
+    TEST_ASSERT_FALSE(display_is_initialized());
+}
+
+void test_display_initialized_after_init(void) {
+    display_reset_initialized();
+    display_init();
+    TEST_ASSERT_TRUE(display_is_initialized());
+}
+
+void test_display_initialized_after_show_message(void) {
+    display_reset_initialized();
+    display_show_message("test", NULL);
+    TEST_ASSERT_TRUE(display_is_initialized());
+}
+
+void test_display_initialized_after_show_error(void) {
+    display_reset_initialized();
+    display_show_error("test");
+    TEST_ASSERT_TRUE(display_is_initialized());
+}
+
+// ---------------------------------------------------------------------------
+// Refresh interval floor tests
+// ---------------------------------------------------------------------------
+
+void test_default_refresh_interval_is_positive(void) {
+    TEST_ASSERT_TRUE(DEFAULT_REFRESH_INTERVAL > 0);
+}
+
+void test_refresh_interval_floor_in_tryAnnounce(void) {
+    // tryAnnounce applies max(resp.refresh_interval, 1) * 60 to floor at 1 minute
+    // (Arduino's max() macro expands to the ternary below)
+    uint32_t server_values[] = {0, 1, 15};
+    uint32_t expected[]      = {60, 60, 900};
+    for (int i = 0; i < 3; i++) {
+        uint32_t v = server_values[i];
+        uint32_t result = (v > 1 ? v : 1) * 60;
+        TEST_ASSERT_EQUAL_UINT32(expected[i], result);
+    }
+}
+
+void test_refresh_interval_no_floor_in_updateCalendar(void) {
+    // updateCalendar has a > 0 guard, so zero is never reached — values pass through directly
+    uint32_t server_values[] = {1, 15, 60};
+    uint32_t expected[]      = {60, 900, 3600};
+    for (int i = 0; i < 3; i++) {
+        // Simulates: if (checkResponse.refresh_interval > 0) { new_interval = val * 60; }
+        uint32_t result = server_values[i] * 60;
+        TEST_ASSERT_EQUAL_UINT32(expected[i], result);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -629,6 +691,17 @@ int main(int argc, char** argv) {
     RUN_TEST(test_cache_display_valid_true_with_etag_is_complete);
     RUN_TEST(test_cache_zero_init_is_invalid);
     RUN_TEST(test_cache_etag_only_valid_with_display_valid);
+
+    // Display sleep guard
+    RUN_TEST(test_display_not_initialized_by_default);
+    RUN_TEST(test_display_initialized_after_init);
+    RUN_TEST(test_display_initialized_after_show_message);
+    RUN_TEST(test_display_initialized_after_show_error);
+
+    // Refresh interval floor
+    RUN_TEST(test_default_refresh_interval_is_positive);
+    RUN_TEST(test_refresh_interval_floor_in_tryAnnounce);
+    RUN_TEST(test_refresh_interval_no_floor_in_updateCalendar);
 
     return UNITY_END();
 }

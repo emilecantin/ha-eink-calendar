@@ -4,9 +4,14 @@
 #include "GUI_Paint.h"
 #include "qrcode.h"
 
+// Guard flag — prevents display_sleep() from being called before
+// the display hardware has been initialized (which would hang at "M1 Busy").
+static bool _display_initialized = false;
+
 void display_init() {
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 }
 
 void display_clear() {
@@ -34,7 +39,16 @@ void display_refresh() {
 }
 
 void display_sleep() {
+  if (!_display_initialized) return;
   EPD_12in48B_Sleep();
+}
+
+bool display_is_initialized() {
+  return _display_initialized;
+}
+
+void display_reset_initialized() {
+  _display_initialized = false;
 }
 
 void display_show_message(const char* line1, const char* line2) {
@@ -48,6 +62,7 @@ void display_show_message(const char* line1, const char* line2) {
   // Initialize display (must call DEV_ModuleInit before EPD init)
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 
   // Create image buffer
   Paint_NewImage(image, CHUNK_WIDTH, CHUNK_HEIGHT, 0, WHITE);
@@ -87,6 +102,7 @@ void display_show_error(const char* message) {
   // Initialize display (must call DEV_ModuleInit before EPD init)
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 
   // Create image buffer
   Paint_NewImage(image, CHUNK_WIDTH, CHUNK_HEIGHT, 0, WHITE);
@@ -140,6 +156,7 @@ void display_show_setup_screen(const char* ssid, const char* url) {
 
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 
   // Generate WiFi QR code (WIFI:T:nopass;S:<ssid>;;)
   char wifiQrText[128];
@@ -212,6 +229,7 @@ void display_show_ha_config_screen(const char* url) {
 
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 
   // Generate QR code for the URL
   QRCode qrcode;
@@ -267,6 +285,7 @@ void display_show_install_screen(const char* repo_url) {
 
   DEV_ModuleInit();
   EPD_12in48B_Init();
+  _display_initialized = true;
 
   // Generate QR code for the repo URL
   QRCode qrcode;
