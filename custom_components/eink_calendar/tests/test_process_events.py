@@ -1,6 +1,6 @@
 """Unit tests for renderer._process_events and related date handling."""
 
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from renderer.renderer import _process_events
 
@@ -94,6 +94,48 @@ class TestProcessEvents:
         result = _process_events(events)
         assert len(result) == 1
         assert result[0]["start"].hour == 10
+
+    def test_allday_datetime_at_midnight_detected(self):
+        """All-day events arriving as datetime objects at midnight must be detected."""
+        events = [{
+            "summary": "Holiday",
+            "start": datetime(2026, 3, 27, 0, 0, tzinfo=timezone.utc),
+            "end": datetime(2026, 3, 28, 0, 0, tzinfo=timezone.utc),
+            "calendar_id": "calendar.test",
+            "calendar_icon": "mdi:calendar",
+        }]
+        result = _process_events(events)
+        assert len(result) == 1
+        assert result[0]["allDay"] is True
+        # End date should be adjusted (exclusive -> inclusive)
+        assert result[0]["end"].day == 27
+
+    def test_allday_date_objects_detected(self):
+        """All-day events arriving as date objects (not datetime) must be detected."""
+        events = [{
+            "summary": "Holiday",
+            "start": date(2026, 3, 27),
+            "end": date(2026, 3, 28),
+            "calendar_id": "calendar.test",
+            "calendar_icon": "mdi:calendar",
+        }]
+        result = _process_events(events)
+        assert len(result) == 1
+        assert result[0]["allDay"] is True
+        assert result[0]["end"].day == 27
+
+    def test_timed_datetime_not_allday(self):
+        """Timed events as datetime objects with non-midnight time must NOT be all-day."""
+        events = [{
+            "summary": "Meeting",
+            "start": datetime(2026, 3, 27, 14, 30, tzinfo=timezone.utc),
+            "end": datetime(2026, 3, 27, 15, 30, tzinfo=timezone.utc),
+            "calendar_id": "calendar.test",
+            "calendar_icon": "mdi:calendar",
+        }]
+        result = _process_events(events)
+        assert len(result) == 1
+        assert result[0]["allDay"] is False
 
     def test_sorting_mixed_naive_aware_no_crash(self):
         """Mixing naive all-day and aware timed events should not crash when sorted."""
