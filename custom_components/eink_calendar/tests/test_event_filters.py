@@ -1,6 +1,6 @@
 """Unit tests for event_filters module."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from renderer.event_filters import get_collection_icons_for_day, get_events_for_day
 
@@ -121,6 +121,80 @@ class TestGetEventsForDay:
         ]
         result = get_events_for_day(events, aware_today)
         assert len(result) == 2
+
+    def test_utc_event_near_midnight_appears_on_correct_local_day(self):
+        """Event at 23:00 UTC on Jan 25 is 18:00 EST on Jan 25 (same day).
+
+        But event at 02:00 UTC on Jan 26 is 21:00 EST on Jan 25 (previous day).
+        The filter should convert to local time, not just strip tzinfo.
+        """
+        utc_minus_5 = timezone(timedelta(hours=-5))
+        day_jan25 = datetime(2026, 1, 25, 10, 0, tzinfo=utc_minus_5)
+
+        events = [
+            make_event(
+                title="Late UTC event",
+                start=datetime(2026, 1, 26, 2, 0, tzinfo=timezone.utc),  # 21:00 EST Jan 25
+                end=datetime(2026, 1, 26, 3, 0, tzinfo=timezone.utc),    # 22:00 EST Jan 25
+            ),
+        ]
+        result = get_events_for_day(events, day_jan25)
+        # This event is on Jan 25 in local time (UTC-5), should be included
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is True
+        assert result[0]["endsOnDay"] is True
+
+    def test_utc_event_not_on_local_day_excluded(self):
+        """Event at 03:00 UTC on Jan 26 is 22:00 EST on Jan 25.
+
+        But event at 10:00 UTC on Jan 26 is 05:00 EST on Jan 26 — not Jan 25.
+        """
+        utc_minus_5 = timezone(timedelta(hours=-5))
+        day_jan25 = datetime(2026, 1, 25, 10, 0, tzinfo=utc_minus_5)
+
+        events = [
+            make_event(
+                title="Next day in local time",
+                start=datetime(2026, 1, 26, 10, 0, tzinfo=timezone.utc),  # 05:00 EST Jan 26
+                end=datetime(2026, 1, 26, 11, 0, tzinfo=timezone.utc),    # 06:00 EST Jan 26
+            ),
+        ]
+        result = get_events_for_day(events, day_jan25)
+        assert len(result) == 0
+
+    def test_timezone_conversion_spans_day_boundary(self):
+        """Multi-day event spanning across timezone conversion boundary."""
+        utc_plus_9 = timezone(timedelta(hours=9))
+        # In UTC+9, Jan 26 00:00 is Jan 25 15:00 UTC
+        day_jan26 = datetime(2026, 1, 26, 10, 0, tzinfo=utc_plus_9)
+
+        events = [
+            make_event(
+                title="Spans in UTC+9",
+                start=datetime(2026, 1, 25, 20, 0, tzinfo=timezone.utc),  # Jan 26 05:00 UTC+9
+                end=datetime(2026, 1, 26, 10, 0, tzinfo=timezone.utc),    # Jan 26 19:00 UTC+9
+            ),
+        ]
+        result = get_events_for_day(events, day_jan26)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is True
+        assert result[0]["endsOnDay"] is True
+
+    def test_naive_day_with_aware_events_converts_to_event_tz(self):
+        """When day is naive but events are aware, convert events for comparison."""
+        utc_minus_5 = timezone(timedelta(hours=-5))
+        naive_day = datetime(2026, 1, 25, 10, 0)  # naive
+
+        events = [
+            make_event(
+                title="Late UTC",
+                start=datetime(2026, 1, 26, 2, 0, tzinfo=utc_minus_5),  # Jan 26 in UTC-5
+                end=datetime(2026, 1, 26, 3, 0, tzinfo=utc_minus_5),
+            ),
+        ]
+        # Event is on Jan 26 in its own timezone, not Jan 25
+        result = get_events_for_day(events, naive_day)
+        assert len(result) == 0
 
     def test_event_missing_start_or_end_skipped(self):
         events = [
