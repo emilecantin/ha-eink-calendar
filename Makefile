@@ -49,13 +49,16 @@ test-esp:
 	pio test -d $(PIO_DIR) -e native
 
 test-integration: $(VENV)/bin/activate ha-test-up
-	cd $(TEST_DIR)/integration && HA_URL=http://localhost:18123 ../../../../$(PYTEST) --rootdir=. -v --tb=short $(ARGS)
+	@echo "Provisioning HA test instance..."
+	@HA_TOKEN=$$(HA_URL=http://localhost:18123 $(VENV)/bin/python $(TEST_DIR)/integration/provision_ha.py) || \
+		{ echo "ERROR: HA provisioning failed"; exit 1; }; \
+	cd $(TEST_DIR)/integration && HA_URL=http://localhost:18123 HA_TOKEN=$$HA_TOKEN ../../../../$(PYTEST) --rootdir=. -v --tb=short $(ARGS)
 
 ha-test-up:
 	@docker compose -f docker-compose.test.yml up -d
 	@echo "Waiting for Home Assistant..."
 	@timeout=120; elapsed=0; \
-	until curl -sf http://localhost:18123 > /dev/null 2>&1; do \
+	until curl -sf http://localhost:18123/api/onboarding > /dev/null 2>&1; do \
 		[ $$elapsed -ge $$timeout ] && echo "ERROR: HA did not start within $${timeout}s" && exit 1; \
 		sleep 2; elapsed=$$((elapsed + 2)); printf "."; \
 	done; echo ""
@@ -63,6 +66,10 @@ ha-test-up:
 
 ha-test-down:
 	docker compose -f docker-compose.test.yml down
+
+ha-test-clean: ha-test-down
+	rm -rf ha-test-config/.storage ha-test-config/.HA_VERSION
+	@echo "Test HA storage cleared. Next 'make ha-test-up' will trigger fresh onboarding."
 
 # --- Home Assistant (dev) ---
 
@@ -91,8 +98,9 @@ help:
 	@echo "  make ha               Start HA dev environment"
 	@echo "  make ha-test-up       Start HA test instance (port 18123)"
 	@echo "  make ha-test-down     Stop HA test instance"
+	@echo "  make ha-test-clean    Stop + wipe HA test data (forces re-onboarding)"
 
 .PHONY: build bundle upload erase monitor flash \
         test test-unit test-esp test-integration \
-        ha ha-test-up ha-test-down help
+        ha ha-test-up ha-test-down ha-test-clean help
 .DEFAULT_GOAL := help
