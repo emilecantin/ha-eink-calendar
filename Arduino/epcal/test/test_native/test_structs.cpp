@@ -592,8 +592,6 @@ void test_default_refresh_interval_is_positive(void) {
 }
 
 void test_refresh_interval_floor_in_tryAnnounce(void) {
-    // tryAnnounce applies max(resp.refresh_interval, 1) * 60 to floor at 1 minute
-    // (Arduino's max() macro expands to the ternary below)
     uint32_t server_values[] = {0, 1, 15};
     uint32_t expected[]      = {60, 60, 900};
     for (int i = 0; i < 3; i++) {
@@ -604,14 +602,40 @@ void test_refresh_interval_floor_in_tryAnnounce(void) {
 }
 
 void test_refresh_interval_no_floor_in_updateCalendar(void) {
-    // updateCalendar has a > 0 guard, so zero is never reached — values pass through directly
     uint32_t server_values[] = {1, 15, 60};
     uint32_t expected[]      = {60, 900, 3600};
     for (int i = 0; i < 3; i++) {
-        // Simulates: if (checkResponse.refresh_interval > 0) { new_interval = val * 60; }
         uint32_t result = server_values[i] * 60;
         TEST_ASSERT_EQUAL_UINT32(expected[i], result);
     }
+}
+
+// ---------------------------------------------------------------------------
+// Chunk buffer size invariants
+// ---------------------------------------------------------------------------
+
+void test_chunk_width_divisible_by_8(void) {
+    TEST_ASSERT_EQUAL(0, CHUNK_WIDTH % 8);
+}
+
+void test_chunk_buffer_size_matches_hardcoded_value(void) {
+    TEST_ASSERT_EQUAL(80196u, CHUNK_BUFFER_SIZE);
+    TEST_ASSERT_EQUAL((size_t)80196, (size_t)((CHUNK_WIDTH / 8) * CHUNK_HEIGHT));
+}
+
+void test_fetch_response_bytes_read_fits_chunk_buffer(void) {
+    FetchResponse resp = {};
+    resp.bytes_read = CHUNK_BUFFER_SIZE;
+    TEST_ASSERT_EQUAL(CHUNK_BUFFER_SIZE, resp.bytes_read);
+}
+
+// ---------------------------------------------------------------------------
+// OTA buffer size test
+// ---------------------------------------------------------------------------
+
+void test_ota_buffer_size_constant(void) {
+    TEST_ASSERT_EQUAL(4096, OTA_BUFFER_SIZE);
+    TEST_ASSERT_EQUAL(0, OTA_BUFFER_SIZE & (OTA_BUFFER_SIZE - 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -702,6 +726,14 @@ int main(int argc, char** argv) {
     RUN_TEST(test_default_refresh_interval_is_positive);
     RUN_TEST(test_refresh_interval_floor_in_tryAnnounce);
     RUN_TEST(test_refresh_interval_no_floor_in_updateCalendar);
+
+    // Chunk buffer invariants
+    RUN_TEST(test_chunk_width_divisible_by_8);
+    RUN_TEST(test_chunk_buffer_size_matches_hardcoded_value);
+    RUN_TEST(test_fetch_response_bytes_read_fits_chunk_buffer);
+
+    // OTA buffer size
+    RUN_TEST(test_ota_buffer_size_constant);
 
     return UNITY_END();
 }

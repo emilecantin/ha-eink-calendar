@@ -806,6 +806,13 @@ bool updateCalendar() {
       strncpy(cache.etag, resp.new_etag, sizeof(cache.etag) - 1);
       cache.etag[sizeof(cache.etag) - 1] = '\0';
     }
+    if (resp.bytes_read != CHUNK_BUFFER_SIZE) {
+      Serial.printf("ERROR: chunk %s size mismatch: got %zu, expected %d\n",
+                    chunk_endpoints[i], resp.bytes_read, CHUNK_BUFFER_SIZE);
+      success = false;
+      failedEndpoint = chunk_endpoints[i];
+      break;
+    }
     File f = LittleFS.open(chunk_files[i], FILE_WRITE);
     if (!f) {
       Serial.printf("LittleFS open failed: %s\n", chunk_files[i]);
@@ -813,10 +820,10 @@ bool updateCalendar() {
       failedEndpoint = chunk_endpoints[i];
       break;
     }
-    size_t written = f.write(chunk_buffer, CHUNK_BUFFER_SIZE);
-    if (written != CHUNK_BUFFER_SIZE) {
-      Serial.printf("LittleFS write failed: %s (wrote %zu / %d, total=%u, used=%u)\n",
-                    chunk_files[i], written, CHUNK_BUFFER_SIZE,
+    size_t written = f.write(chunk_buffer, resp.bytes_read);
+    if (written != resp.bytes_read) {
+      Serial.printf("LittleFS write failed: %s (wrote %zu / %zu, total=%u, used=%u)\n",
+                    chunk_files[i], written, resp.bytes_read,
                     LittleFS.totalBytes(), LittleFS.usedBytes());
       if (f) f.close();
       success = false;
