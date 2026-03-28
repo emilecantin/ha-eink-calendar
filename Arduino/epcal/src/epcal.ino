@@ -837,11 +837,9 @@ bool updateCalendar() {
     return false;
   }
 
-  // Persist ETag now — even if display refresh fails/crashes, we won't
-  // re-download the same bitmaps on the next wake cycle.
-  cache_save(&cache);
-
   // --- Phase 2: Init display, read chunks from LittleFS, send ---
+  // ETag is saved only after successful display refresh (see below).
+  // If display refresh fails/crashes, the device re-downloads next cycle.
 
   display_init();
 
