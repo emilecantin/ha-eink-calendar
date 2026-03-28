@@ -141,6 +141,89 @@ class TestRenderCalendar:
         assert img.format == "PNG"
         assert img.size == (1304, 984)
 
+    def test_preview_is_composite_of_black_and_red_layers(self):
+        """Preview should be composited from black + red layers, not rendered separately."""
+        calendar_events = [{
+            "calendar_id": "calendar.test",
+            "calendar_icon": "mdi:calendar",
+            "summary": "Test Meeting",
+            "start": "2026-01-26T14:00:00",
+            "end": "2026-01-26T15:00:00",
+        }]
+        now = datetime(2026, 1, 26, 10, 0, 0)
+        result = render_calendar(calendar_events, [], None, now, {})
+
+        # Open the preview PNG
+        preview_img = Image.open(BytesIO(result.preview_png)).convert("RGB")
+
+        # Every non-white pixel in the preview must come from either
+        # the black or the red layer rendering. We verify the preview
+        # contains non-white pixels (it's not blank) and is a valid image.
+        preview_pixels = preview_img.load()
+        width, height = preview_img.size
+
+        has_black = False
+        has_red = False
+        for y in range(height):
+            for x in range(width):
+                r, g, b = preview_pixels[x, y]
+                if r == 0 and g == 0 and b == 0:
+                    has_black = True
+                if r == 255 and g == 0 and b == 0:
+                    has_red = True
+                if has_black and has_red:
+                    break
+            if has_black and has_red:
+                break
+
+        assert has_black, "Preview should contain black pixels from the black layer"
+        assert has_red, "Preview should contain red pixels from the red layer"
+
+    def test_preview_composites_without_extra_render_calls(self):
+        """Preview should be built by compositing images, not by calling draw functions again."""
+        import unittest.mock as mock
+        from renderer.renderer import render_calendar as rc_func
+        from renderer import renderer as renderer_mod
+
+        calendar_events = [{
+            "calendar_id": "calendar.test",
+            "calendar_icon": "mdi:calendar",
+            "summary": "Test Meeting",
+            "start": "2026-01-26T14:00:00",
+            "end": "2026-01-26T15:00:00",
+        }]
+        now = datetime(2026, 1, 26, 10, 0, 0)
+
+        # Patch the section renderers to count calls
+        call_count = {"today": 0, "week": 0, "upcoming": 0}
+
+        orig_today = renderer_mod.draw_landscape_today_section
+        orig_week = renderer_mod.draw_landscape_week_section
+        orig_upcoming = renderer_mod.draw_landscape_upcoming_section
+
+        def counting_today(*args, **kwargs):
+            call_count["today"] += 1
+            return orig_today(*args, **kwargs)
+
+        def counting_week(*args, **kwargs):
+            call_count["week"] += 1
+            return orig_week(*args, **kwargs)
+
+        def counting_upcoming(*args, **kwargs):
+            call_count["upcoming"] += 1
+            return orig_upcoming(*args, **kwargs)
+
+        with mock.patch.object(renderer_mod, "draw_landscape_today_section", counting_today), \
+             mock.patch.object(renderer_mod, "draw_landscape_week_section", counting_week), \
+             mock.patch.object(renderer_mod, "draw_landscape_upcoming_section", counting_upcoming):
+            render_calendar(calendar_events, [], None, now, {})
+
+        # Each section should be called exactly 2 times (once for black, once for red)
+        # NOT 4 times (which would mean a separate preview render pass)
+        assert call_count["today"] == 2, f"Expected 2 today calls, got {call_count['today']}"
+        assert call_count["week"] == 2, f"Expected 2 week calls, got {call_count['week']}"
+        assert call_count["upcoming"] == 2, f"Expected 2 upcoming calls, got {call_count['upcoming']}"
+
     def test_render_with_weather(self):
         calendar_events = [{
             "calendar_id": "calendar.test",
