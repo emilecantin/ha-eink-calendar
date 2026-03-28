@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from PIL import Image, ImageDraw
 
-from ..i18n import format_month_abbr
+from ..i18n import format_short_date, format_short_date_range
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import truncate_text
@@ -122,11 +122,9 @@ def draw_landscape_upcoming_section(
             is_multi_day = days_diff >= 1
 
             if is_multi_day:
-                # Format: "JAN 25-27"
-                date_str = f"{format_month_abbr(event_start, lang)} {event_start.day}-{event_end.day}"
+                date_str = format_short_date_range(event_start, event_end, lang)
             else:
-                # Format: "JAN 25"
-                date_str = f"{format_month_abbr(event_start, lang)} {event_start.day}"
+                date_str = format_short_date(event_start, lang)
 
             draw.text((x, y), date_str, fill=COLORS["BLACK"], font=date_font)
 
