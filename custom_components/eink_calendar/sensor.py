@@ -10,7 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import CONF_DEVICE_NAME, CONF_MAC_ADDRESS, DOMAIN, SENSOR_FIRMWARE_VERSION_NAME, SENSOR_LAST_CHECKIN_NAME, SENSOR_LAST_UPDATE_NAME
+from .const import CONF_DEVICE_NAME, CONF_MAC_ADDRESS, DOMAIN, SENSOR_CHECKIN_COUNT_NAME, SENSOR_DEVICE_ETAG_NAME, SENSOR_DEVICE_STATUS_NAME, SENSOR_FIRMWARE_VERSION_NAME, SENSOR_LAST_CHECKIN_NAME, SENSOR_LAST_UPDATE_NAME
 from .coordinator import EinkCalendarDataCoordinator
 
 _LOGGER = logging.getLogger(__name__)
@@ -29,6 +29,9 @@ async def async_setup_entry(
             EinkCalendarLastUpdateSensor(coordinator, entry),
             EinkCalendarLastCheckinSensor(coordinator, entry),
             EinkCalendarFirmwareVersionSensor(coordinator, entry),
+            EinkCalendarDeviceStatusSensor(coordinator, entry),
+            EinkCalendarDeviceEtagSensor(coordinator, entry),
+            EinkCalendarCheckinCountSensor(coordinator, entry),
         ]
     )
 
@@ -119,3 +122,90 @@ class EinkCalendarFirmwareVersionSensor(SensorEntity):
     @property
     def native_value(self) -> str:
         return self.coordinator.firmware_version
+
+
+class EinkCalendarDeviceStatusSensor(SensorEntity):
+    """Sensor showing the device status (healthy, overdue, error, etc.).
+
+    Only updates on actual device check-ins or overdue evaluations.
+    """
+
+    _STATUS_ICONS = {
+        "healthy": "mdi:check-circle",
+        "rapid_checkin": "mdi:speedometer",
+        "overdue": "mdi:clock-alert",
+        "unknown": "mdi:help-circle",
+    }
+
+    def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
+        self.coordinator = coordinator
+        self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Device Status"
+        self._attr_unique_id = f"{entry.entry_id}_{SENSOR_DEVICE_STATUS_NAME}"
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
+
+    async def async_added_to_hass(self) -> None:
+        self.coordinator.on_checkin(self._handle_checkin)
+
+    def _handle_checkin(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.device_status
+
+    @property
+    def icon(self) -> str:
+        status = self.coordinator.device_status
+        if status.startswith("error"):
+            return "mdi:alert"
+        return self._STATUS_ICONS.get(status, "mdi:help-circle")
+
+
+class EinkCalendarDeviceEtagSensor(SensorEntity):
+    """Sensor showing the device's current ETag.
+
+    Only updates on actual device check-ins.
+    """
+
+    _attr_icon = "mdi:tag"
+
+    def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
+        self.coordinator = coordinator
+        self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Device ETag"
+        self._attr_unique_id = f"{entry.entry_id}_{SENSOR_DEVICE_ETAG_NAME}"
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
+
+    async def async_added_to_hass(self) -> None:
+        self.coordinator.on_checkin(self._handle_checkin)
+
+    def _handle_checkin(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> str:
+        return self.coordinator.device_etag
+
+
+class EinkCalendarCheckinCountSensor(SensorEntity):
+    """Sensor showing the total number of device check-ins.
+
+    Only updates on actual device check-ins.
+    """
+
+    _attr_icon = "mdi:counter"
+
+    def __init__(self, coordinator: EinkCalendarDataCoordinator, entry: ConfigEntry) -> None:
+        self.coordinator = coordinator
+        self._attr_name = f"{entry.data.get(CONF_DEVICE_NAME, 'E-Ink Calendar')} Check-in Count"
+        self._attr_unique_id = f"{entry.entry_id}_{SENSOR_CHECKIN_COUNT_NAME}"
+        self._attr_device_info = {"identifiers": _device_identifiers(entry)}
+
+    async def async_added_to_hass(self) -> None:
+        self.coordinator.on_checkin(self._handle_checkin)
+
+    def _handle_checkin(self) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self) -> int:
+        return self.coordinator.checkin_count

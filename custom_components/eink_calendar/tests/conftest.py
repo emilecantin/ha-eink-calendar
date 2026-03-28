@@ -27,6 +27,7 @@ _HA_MODULES = [
     "homeassistant.helpers.device_registry",
     "homeassistant.helpers.entity_platform",
     "homeassistant.helpers.entity_registry",
+    "homeassistant.helpers.event",
     "homeassistant.helpers.update_coordinator",
     "homeassistant.components.sensor",
     "homeassistant.util",
@@ -100,6 +101,17 @@ class _FakeDataUpdateCoordinator:
     async def async_request_refresh(self):
         pass
 
+
+# Make dt_util.now() return real datetimes (not MagicMock)
+# Note: `from homeassistant.util import dt` resolves to sys.modules["homeassistant.util"].dt
+# which is a MagicMock attribute, NOT sys.modules["homeassistant.util.dt"]
+from datetime import datetime, timezone
+
+_dt_mock = sys.modules["homeassistant.util"].dt
+_dt_mock.now = lambda: datetime.now(timezone.utc)
+_dt_mock.start_of_local_day = lambda: datetime.now(timezone.utc).replace(
+    hour=0, minute=0, second=0, microsecond=0
+)
 
 # Patch the real base classes into the mocked modules
 sys.modules["homeassistant.components.sensor"].SensorEntity = _FakeSensorEntity

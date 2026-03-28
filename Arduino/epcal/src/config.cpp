@@ -96,6 +96,7 @@ bool endpoints_load(BitmapEndpoints* endpoints) {
   preferences.getString("ep_red_top", endpoints->red_top, sizeof(endpoints->red_top));
   preferences.getString("ep_red_bot", endpoints->red_bottom, sizeof(endpoints->red_bottom));
   preferences.getString("ep_check", endpoints->check, sizeof(endpoints->check));
+  preferences.getString("ep_error", endpoints->error, sizeof(endpoints->error));
 
   preferences.end();
   return true;
@@ -109,6 +110,7 @@ void endpoints_save(const BitmapEndpoints* endpoints) {
   preferences.putString("ep_red_top", endpoints->red_top);
   preferences.putString("ep_red_bot", endpoints->red_bottom);
   preferences.putString("ep_check", endpoints->check);
+  preferences.putString("ep_error", endpoints->error);
 
   preferences.end();
 }

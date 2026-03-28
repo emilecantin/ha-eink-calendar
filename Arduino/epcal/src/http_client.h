@@ -107,4 +107,18 @@ FetchResponse http_fetch_chunk(
 bool http_ota_update(const char* ha_url, const char* ota_path,
                      const char* mac, uint32_t expected_size);
 
+/**
+ * Report an error to Home Assistant.
+ * Fire-and-forget — errors during reporting are silently ignored.
+ *
+ * @param ha_url       Home Assistant base URL
+ * @param error_path   Error endpoint path (from announce response)
+ * @param mac          Device MAC address (for X-MAC header)
+ * @param error        Short error description (e.g., "display_refresh_failed")
+ * @param details      Optional details string (can be NULL)
+ */
+void http_report_error(const char* ha_url, const char* error_path,
+                       const char* mac, const char* error,
+                       const char* details);
+
 #endif // EINK_CALENDAR_HTTP_CLIENT_H

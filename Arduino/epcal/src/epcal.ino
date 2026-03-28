@@ -260,6 +260,11 @@ void setup() {
   }
 
   // Step 1: Discover HA and announce (or use saved config)
+  // Re-announce if missing the error endpoint (added in firmware 1.1.4)
+  if (hasEndpoints && endpoints.error[0] == '\0') {
+    Serial.println("Error endpoint missing — re-announcing to get updated endpoints");
+    hasEndpoints = false;
+  }
   if (!config.discovered || !hasEndpoints) {
     if (!discoverAndAnnounce()) {
       if (config.ha_url[0] != '\0') {
@@ -679,6 +684,10 @@ bool updateCalendar() {
 
   if (checkResponse.result == FETCH_ERROR) {
     Serial.printf("Check failed with HTTP %d\n", checkResponse.http_code);
+    char details[64];
+    snprintf(details, sizeof(details), "HTTP %d", checkResponse.http_code);
+    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
+                      "check_failed", details);
     return false;
   }
 
@@ -716,6 +725,8 @@ bool updateCalendar() {
   chunk_buffer = (uint8_t*)malloc(CHUNK_BUFFER_SIZE);
   if (!chunk_buffer) {
     Serial.println("Failed to allocate chunk buffer!");
+    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
+                      "memory_alloc_failed", "chunk buffer");
     display_show_error("Memory allocation failed");
     display_sleep();
     return false;
@@ -723,6 +734,8 @@ bool updateCalendar() {
 
   if (!LittleFS.begin(true)) {
     Serial.println("LittleFS mount failed!");
+    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
+                      "littlefs_mount_failed", NULL);
     free(chunk_buffer);
     return false;
   }
@@ -775,12 +788,18 @@ bool updateCalendar() {
 
   if (!success) {
     Serial.printf("Download failed for %s\n", failedEndpoint);
+    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
+                      "download_failed", failedEndpoint);
     free(chunk_buffer);
     LittleFS.end();
     display_show_message("Download failed", "Retrying in 60 seconds...");
     display_sleep();
     return false;
   }
+
+  // Persist ETag now — even if display refresh fails/crashes, we won't
+  // re-download the same bitmaps on the next wake cycle.
+  cache_save(&cache);
 
   // --- Phase 2: Init display, read chunks from LittleFS, send ---
 
@@ -819,6 +838,8 @@ bool updateCalendar() {
     Serial.println("Display updated successfully!");
   } else {
     Serial.println("LittleFS read failed during display update");
+    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
+                      "display_update_failed", "LittleFS read error");
   }
 
   display_sleep();

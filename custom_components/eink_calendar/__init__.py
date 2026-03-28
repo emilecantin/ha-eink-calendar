@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.event import async_track_time_interval
 
 from .const import (
     CONF_DEVICE_NAME,
@@ -86,6 +88,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     # Set up platforms
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Check for overdue device every 2 minutes
+    unsub = async_track_time_interval(
+        hass,
+        lambda now: coordinator.evaluate_overdue(),
+        timedelta(minutes=2),
+    )
+    entry.async_on_unload(unsub)
 
     # Register update listener for options changes
     entry.async_on_unload(entry.add_update_listener(async_reload_entry))

@@ -111,6 +111,8 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
       if (rt) strncpy(response.endpoints.red_top, rt, sizeof(response.endpoints.red_top) - 1);
       if (rb) strncpy(response.endpoints.red_bottom, rb, sizeof(response.endpoints.red_bottom) - 1);
       if (ck) strncpy(response.endpoints.check, ck, sizeof(response.endpoints.check) - 1);
+      const char* er = endpoints["error"];
+      if (er) strncpy(response.endpoints.error, er, sizeof(response.endpoints.error) - 1);
     }
 
     // Parse OTA firmware update info if present
@@ -322,6 +324,38 @@ FetchResponse http_fetch_chunk(
 
   http.end();
   return response;
+}
+
+void http_report_error(const char* ha_url, const char* error_path,
+                       const char* mac, const char* error,
+                       const char* details) {
+  if (!error_path || error_path[0] == '\0') {
+    return;  // No error endpoint configured
+  }
+
+  HTTPClient http;
+  String url = String(ha_url) + error_path;
+
+  httpBegin(http, url);
+  http.addHeader("Content-Type", "application/json");
+  http.addHeader("X-MAC", mac);
+
+  // Build JSON payload
+  JsonDocument doc;
+  doc["error"] = error;
+  if (details && details[0] != '\0') {
+    doc["details"] = details;
+  }
+  String payload;
+  serializeJson(doc, payload);
+
+  int httpCode = http.POST(payload);
+  if (httpCode == 200) {
+    Serial.printf("Error reported to HA: %s\n", error);
+  } else {
+    Serial.printf("Failed to report error (HTTP %d)\n", httpCode);
+  }
+  http.end();
 }
 
 bool http_ota_update(const char* ha_url, const char* ota_path,

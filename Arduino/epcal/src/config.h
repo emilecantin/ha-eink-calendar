@@ -25,6 +25,7 @@ struct BitmapEndpoints {
   char red_top[128];
   char red_bottom[128];
   char check[128];
+  char error[128];
 };
 
 // Default values

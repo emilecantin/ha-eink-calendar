@@ -74,6 +74,7 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                             "red_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_top",
                             "red_bottom": f"/api/eink_calendar/bitmap/{entry.entry_id}/red_bottom",
                             "check": f"/api/eink_calendar/bitmap/{entry.entry_id}/check",
+                            "error": f"/api/eink_calendar/error/{entry.entry_id}",
                         },
                     }
 
@@ -218,9 +219,12 @@ class EinkCalendarBitmapView(HomeAssistantView):
                     image_changed = True
                     coordinator._force_refresh = False
 
-                _LOGGER.debug(
-                    "Check request: If-None-Match=%s, ETag=%s, FW=%s, image_changed=%s",
-                    if_none_match, etag, fw_version, image_changed,
+                if if_none_match:
+                    coordinator.device_etag = if_none_match
+
+                _LOGGER.info(
+                    "Check-in: device_etag=%s, server_etag=%s, match=%s, fw=%s",
+                    if_none_match or "(none)", etag, not image_changed, fw_version,
                 )
 
                 # Check for firmware update
@@ -258,6 +262,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
             # Bitmap layer requests — ETag check
             if_none_match = request.headers.get("If-None-Match")
             if if_none_match and if_none_match == etag:
+                _LOGGER.info("Bitmap %s: 304 not modified", layer)
                 return web.Response(status=304)
 
             # Get the appropriate chunk
@@ -274,10 +279,9 @@ class EinkCalendarBitmapView(HomeAssistantView):
             if chunk is None:
                 return web.Response(text="Failed to render", status=500)
 
-            _LOGGER.debug(
-                "Serving bitmap %s for entry %s (%d bytes)",
+            _LOGGER.info(
+                "Bitmap %s: served 200 (%d bytes)",
                 layer,
-                entry_id,
                 len(chunk),
             )
 
@@ -292,6 +296,66 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
         except Exception as err:
             _LOGGER.error("Error serving bitmap: %s", err, exc_info=True)
+            return web.Response(text=f"Internal server error: {err}", status=500)
+
+
+class EinkCalendarErrorView(HomeAssistantView):
+    """Handle error reports from ESP32 devices."""
+
+    url = "/api/eink_calendar/error/{entry_id}"
+    name = "api:eink_calendar:error"
+    requires_auth = False
+
+    def __init__(self, hass: HomeAssistant) -> None:
+        """Initialize the view."""
+        self.hass = hass
+
+    async def post(
+        self, request: web.Request, entry_id: str
+    ) -> web.Response:
+        """Handle error report from ESP32."""
+        try:
+            # Find the config entry
+            entry = self.hass.config_entries.async_get_entry(entry_id)
+            if not entry or entry.domain != DOMAIN:
+                _LOGGER.warning("Unknown entry_id: %s", entry_id)
+                return web.Response(text="Unknown device", status=404)
+
+            # Verify MAC address from request header
+            request_mac = request.headers.get("X-MAC", "").upper()
+            entry_mac = entry.data.get(CONF_MAC_ADDRESS, "")
+
+            if entry_mac and request_mac != entry_mac:
+                _LOGGER.warning(
+                    "MAC mismatch for entry %s: got %s, expected %s",
+                    entry_id,
+                    request_mac,
+                    entry_mac,
+                )
+                return web.Response(text="Unauthorized", status=403)
+
+            # Parse JSON body
+            data = await request.json()
+            error = data.get("error", "unknown_error")
+            details = data.get("details", "")
+            error_msg = f"{error}: {details}" if details else error
+
+            # Get coordinator and record the error
+            coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
+            if coordinator:
+                coordinator.record_device_error(error_msg)
+                # Notify checkin callbacks so sensors update
+                for callback in coordinator._checkin_callbacks:
+                    callback()
+
+            _LOGGER.warning(
+                "Device error reported for entry %s: %s", entry_id, error_msg
+            )
+
+            return self.json({"status": "ok"})
+
+        except Exception as err:
+            _LOGGER.error("Error handling error report: %s", err, exc_info=True)
             return web.Response(text=f"Internal server error: {err}", status=500)
 
 
@@ -361,6 +425,7 @@ def setup_http_views(hass: HomeAssistant) -> None:
     """Register HTTP views."""
     hass.http.register_view(EinkCalendarAnnounceView(hass))
     hass.http.register_view(EinkCalendarBitmapView(hass))
+    hass.http.register_view(EinkCalendarErrorView(hass))
     hass.http.register_view(EinkCalendarFirmwareView(hass))
 
     _LOGGER.info("E-Ink Calendar HTTP API views registered")

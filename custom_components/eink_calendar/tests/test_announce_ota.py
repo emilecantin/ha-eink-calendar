@@ -23,7 +23,6 @@ class TestAnnounceOtaMetadata:
 
     def setup_method(self):
         self.tmpdir = tempfile.mkdtemp()
-        self.manager = FirmwareManager(self.tmpdir)
 
     def teardown_method(self):
         import shutil
@@ -32,7 +31,8 @@ class TestAnnounceOtaMetadata:
     def test_build_ota_info_when_update_available(self):
         """When bundled firmware version differs from device, OTA info should be present."""
         _make_integration_dir(self.tmpdir, "1.1.0", b"\x00" * 5000)
-        result = self.manager.build_ota_info("1.0.0", "test-entry-id")
+        manager = FirmwareManager(self.tmpdir)
+        result = manager.build_ota_info("1.0.0", "test-entry-id")
 
         assert result is not None
         assert result["version"] == "1.1.0"
@@ -42,13 +42,15 @@ class TestAnnounceOtaMetadata:
     def test_no_ota_info_when_version_matches(self):
         """When device firmware matches bundled firmware, no OTA info."""
         _make_integration_dir(self.tmpdir, "1.0.0", b"\x00" * 5000)
-        result = self.manager.build_ota_info("1.0.0", "test-entry-id")
+        manager = FirmwareManager(self.tmpdir)
+        result = manager.build_ota_info("1.0.0", "test-entry-id")
 
         assert result is None
 
     def test_no_ota_info_when_no_firmware_bundled(self):
         """When no firmware.bin is bundled, no OTA info."""
         _make_integration_dir(self.tmpdir, "1.0.0")
-        result = self.manager.build_ota_info("1.0.0", "test-entry-id")
+        manager = FirmwareManager(self.tmpdir)
+        result = manager.build_ota_info("1.0.0", "test-entry-id")
 
         assert result is None
