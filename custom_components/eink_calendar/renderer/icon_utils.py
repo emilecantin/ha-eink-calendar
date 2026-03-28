@@ -6,6 +6,7 @@ Icons are rendered as font glyphs via Pillow, scaling cleanly to any size.
 
 import json
 import logging
+from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -23,12 +24,6 @@ DEFAULT_ICON_SIZE = 24
 # Codepoint lookup: icon name -> hex codepoint string
 _codepoints: dict[str, str] | None = None
 
-# Font cache: size -> ImageFont
-_font_cache: dict[int, ImageFont.FreeTypeFont] = {}
-
-# Rendered icon cache: (name, size, color) -> Image
-_icon_cache: dict[tuple[str, int, tuple], Image.Image] = {}
-
 
 def _load_codepoints() -> dict[str, str]:
     """Load the MDI name-to-codepoint mapping."""
@@ -44,11 +39,10 @@ def _load_codepoints() -> dict[str, str]:
     return _codepoints
 
 
+@lru_cache(maxsize=32)
 def _get_font(size: int) -> ImageFont.FreeTypeFont:
-    """Get the MDI font at a given size, cached."""
-    if size not in _font_cache:
-        _font_cache[size] = ImageFont.truetype(str(MDI_FONT_PATH), size)
-    return _font_cache[size]
+    """Get the MDI font at a given size, cached via lru_cache."""
+    return ImageFont.truetype(str(MDI_FONT_PATH), size)
 
 
 def _render_glyph(
@@ -82,12 +76,16 @@ def _render_glyph(
     return img
 
 
+@lru_cache(maxsize=128)
 def get_icon(
     icon_name: str,
     size: int = DEFAULT_ICON_SIZE,
     color: tuple[int, int, int, int] = (0, 0, 0, 255),
 ) -> Optional[Image.Image]:
     """Get an MDI icon rendered as a PIL Image.
+
+    Cached via functools.lru_cache with bounded size to prevent unbounded
+    memory growth from rendered icon images.
 
     Args:
         icon_name: Icon name without prefix (e.g., "calendar", "briefcase")
@@ -97,19 +95,13 @@ def get_icon(
     Returns:
         PIL RGBA Image, or None if icon not found
     """
-    cache_key = (icon_name, size, color)
-    if cache_key in _icon_cache:
-        return _icon_cache[cache_key]
-
     codepoints = _load_codepoints()
     cp = codepoints.get(icon_name)
     if cp is None:
         _LOGGER.warning("MDI icon not found: %s", icon_name)
         return None
 
-    icon = _render_glyph(cp, size, color)
-    _icon_cache[cache_key] = icon
-    return icon
+    return _render_glyph(cp, size, color)
 
 
 def paste_icon(
