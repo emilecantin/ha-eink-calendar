@@ -17,7 +17,8 @@ def draw_landscape_upcoming_section(
     events: list[CalendarEvent],
     today: datetime,
     is_red: bool,
-    img: Image.Image | None = None,
+    *,
+    img: Image.Image,
     lang: str = "fr",
 ) -> None:
     """Draw the Upcoming section in landscape layout (lower right panel).
@@ -28,11 +29,8 @@ def draw_landscape_upcoming_section(
         events: List of all calendar events (will be filtered)
         today: Current date
         is_red: Whether drawing on red layer
+        img: PIL Image object for pasting icons
     """
-    # Get image from draw context if not provided (needed for pasting icons)
-    if img is None:
-        # ImageDraw.Draw stores reference to the image in _image attribute
-        img = draw._image
 
     section_x = LAYOUT_LANDSCAPE["TODAY"]["width"]
     section_y = LAYOUT_LANDSCAPE["WEEK"]["height"]

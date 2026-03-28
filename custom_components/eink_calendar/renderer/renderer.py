@@ -93,29 +93,31 @@ def render_calendar(
     # Create legend from regular calendars
     legend = _create_legend(calendar_events)
 
-    def _draw_all_sections(draw: ImageDraw.ImageDraw, is_red: bool) -> None:
+    def _draw_all_sections(
+        draw: ImageDraw.ImageDraw, img: Image.Image, is_red: bool
+    ) -> None:
         draw_landscape_today_section(
             draw, fonts, processed_events, now, is_red=is_red,
             weather_data=weather_data, legend=legend,
-            waste_events=processed_waste, lang=lang,
+            waste_events=processed_waste, img=img, lang=lang,
         )
         draw_landscape_week_section(
             draw, fonts, processed_events, now, is_red=is_red,
             weather_data=weather_data, waste_events=processed_waste,
-            lang=lang,
+            img=img, lang=lang,
         )
         draw_landscape_upcoming_section(
             draw, fonts, processed_events, now, is_red=is_red,
-            lang=lang,
+            img=img, lang=lang,
         )
 
     # Create black layer
     black_img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    _draw_all_sections(ImageDraw.Draw(black_img), is_red=False)
+    _draw_all_sections(ImageDraw.Draw(black_img), black_img, is_red=False)
 
     # Create red layer
     red_img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    _draw_all_sections(ImageDraw.Draw(red_img), is_red=True)
+    _draw_all_sections(ImageDraw.Draw(red_img), red_img, is_red=True)
 
     # Composite preview from the already-rendered black and red layers.
     # Start with a copy of the black layer, then overlay non-white red pixels.

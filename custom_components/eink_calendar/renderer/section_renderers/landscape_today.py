@@ -23,7 +23,8 @@ def draw_landscape_today_section(
     weather_data: WeatherData | None = None,
     legend: list[dict[str, str]] | None = None,
     waste_events: list[CalendarEvent] | None = None,
-    img: Image.Image | None = None,
+    *,
+    img: Image.Image,
     lang: str = "fr",
 ) -> None:
     """Draw the Today section in landscape layout (full-height left panel).
@@ -37,16 +38,12 @@ def draw_landscape_today_section(
         weather_data: Weather data from coordinator (optional)
         legend: List of legend items with icon/name (optional)
         waste_events: Processed waste collection events
+        img: PIL Image object for pasting icons
     """
     if legend is None:
         legend = []
     if waste_events is None:
         waste_events = []
-
-    # Get image from draw context if not provided (needed for pasting icons)
-    if img is None:
-        # ImageDraw.Draw stores reference to the image in _image attribute
-        img = draw._image
 
     section_width = LAYOUT_LANDSCAPE["TODAY"]["width"]
     section_height = DISPLAY["LANDSCAPE"]["height"]
