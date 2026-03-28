@@ -9,7 +9,7 @@ from ..event_renderer import draw_event_triangle, draw_overflow_indicator
 from ..i18n import format_date, format_day_name
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, DISPLAY, LAYOUT_LANDSCAPE, MARGINS
-from ..text_utils import wrap_text
+from ..text_utils import truncate_text, wrap_text
 from ..types import CalendarEvent, FontDict, WeatherData
 from ..weather_utils import get_forecast_for_date, get_weather_icon
 
@@ -423,17 +423,10 @@ def draw_landscape_today_section(
                 icon_y = y + 2
                 img.paste(icon_img, (int(x), int(icon_y)), icon_img)
 
-            # Name (truncated if needed)
+            # Name (truncated to fit using font measurement)
             name_x = x + 20
             max_name_width = col_width - 25
-            name_bbox = draw.textbbox((0, 0), item["name"], font=legend_font)
-            name_width = name_bbox[2] - name_bbox[0]
-
-            if name_width <= max_name_width:
-                truncated_name = item["name"]
-            else:
-                # Simple truncation
-                truncated_name = item["name"][: int(max_name_width / 8)] + "..."
+            truncated_name = truncate_text(item["name"], max_name_width, legend_font)
 
             draw.text(
                 (name_x, y), truncated_name, fill=COLORS["BLACK"], font=legend_font
