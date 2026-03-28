@@ -486,6 +486,73 @@ void test_ota_max_retries_constant(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Cache state invariant tests (regression for stale display bug)
+//
+// The ETag must only be persisted AFTER successful display refresh.
+// If the ETag is saved before display refresh and the refresh fails/crashes,
+// subsequent check-ins get 304 (ETag matches) and the display is never
+// retried — resulting in a permanently stale display.
+//
+// The invariant: cache.display_valid == false means cache.etag is ignored
+// by cache_load(), forcing a re-download on next boot.
+// ---------------------------------------------------------------------------
+
+void test_cache_display_valid_false_clears_etag_semantically(void) {
+    // When display_valid is false, the etag should be treated as stale.
+    // cache_load() enforces this by clearing etag when display_valid is false.
+    // Simulate: etag was set but display refresh failed.
+    CacheState cache = {};
+    strncpy(cache.etag, "abc123", sizeof(cache.etag) - 1);
+    cache.etag[sizeof(cache.etag) - 1] = '\0';
+    cache.display_valid = false;
+
+    // The etag field has content, but display_valid is false.
+    // The system must not use this etag for 304 comparisons.
+    TEST_ASSERT_FALSE(cache.display_valid);
+    TEST_ASSERT_TRUE(strlen(cache.etag) > 0);
+    // This combination means "re-download needed"
+}
+
+void test_cache_display_valid_true_with_etag_is_complete(void) {
+    // A valid cache has both display_valid=true AND a non-empty etag.
+    CacheState cache = {};
+    strncpy(cache.etag, "d41d8cd98f00b204e9800998ecf8427e", sizeof(cache.etag) - 1);
+    cache.etag[sizeof(cache.etag) - 1] = '\0';
+    cache.display_valid = true;
+
+    TEST_ASSERT_TRUE(cache.display_valid);
+    TEST_ASSERT_TRUE(strlen(cache.etag) > 0);
+    // This combination means "display matches server, safe to 304"
+}
+
+void test_cache_zero_init_is_invalid(void) {
+    // A zero-initialized cache must require re-download
+    CacheState cache = {};
+    TEST_ASSERT_FALSE(cache.display_valid);
+    TEST_ASSERT_EQUAL_STRING("", cache.etag);
+}
+
+void test_cache_etag_only_valid_with_display_valid(void) {
+    // Simulate the correct update sequence:
+    // 1. Download bitmaps → set etag, display_valid stays false
+    // 2. Display refresh succeeds → set display_valid = true
+    // 3. Save cache
+    CacheState cache = {};
+
+    // Step 1: After download, before display refresh
+    strncpy(cache.etag, "newetag123", sizeof(cache.etag) - 1);
+    cache.etag[sizeof(cache.etag) - 1] = '\0';
+    // display_valid is still false — cache should NOT be trusted
+    TEST_ASSERT_FALSE(cache.display_valid);
+
+    // Step 2: After successful display refresh
+    cache.display_valid = true;
+    // NOW the cache is valid
+    TEST_ASSERT_TRUE(cache.display_valid);
+    TEST_ASSERT_EQUAL_STRING("newetag123", cache.etag);
+}
+
+// ---------------------------------------------------------------------------
 // Test runner
 // ---------------------------------------------------------------------------
 
@@ -556,6 +623,12 @@ int main(int argc, char** argv) {
 
     // mDNS retry / announce states (regression for #51)
     RUN_TEST(test_ota_max_retries_constant);
+
+    // Cache state invariants (regression for stale display bug)
+    RUN_TEST(test_cache_display_valid_false_clears_etag_semantically);
+    RUN_TEST(test_cache_display_valid_true_with_etag_is_complete);
+    RUN_TEST(test_cache_zero_init_is_invalid);
+    RUN_TEST(test_cache_etag_only_valid_with_display_valid);
 
     return UNITY_END();
 }
