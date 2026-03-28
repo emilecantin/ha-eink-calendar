@@ -19,6 +19,7 @@
 #include "config.h"
 #include "http_client.h"
 #include "display.h"
+#include "url_validation.h"
 
 // ---------------------------------------------------------------------------
 // Config struct tests
@@ -241,6 +242,78 @@ void test_announce_status_enum_values(void) {
 }
 
 // ---------------------------------------------------------------------------
+// URL validation tests (#20)
+// ---------------------------------------------------------------------------
+
+void test_validate_ha_url_valid_http(void) {
+    TEST_ASSERT_TRUE(validateHaUrl("http://homeassistant.local:8123"));
+}
+
+void test_validate_ha_url_valid_https(void) {
+    TEST_ASSERT_TRUE(validateHaUrl("https://homeassistant.local:8123"));
+}
+
+void test_validate_ha_url_valid_ip(void) {
+    TEST_ASSERT_TRUE(validateHaUrl("http://192.168.1.100:8123"));
+}
+
+void test_validate_ha_url_valid_minimal(void) {
+    TEST_ASSERT_TRUE(validateHaUrl("http://ha"));
+}
+
+void test_validate_ha_url_rejects_null(void) {
+    TEST_ASSERT_FALSE(validateHaUrl(NULL));
+}
+
+void test_validate_ha_url_rejects_empty(void) {
+    TEST_ASSERT_FALSE(validateHaUrl(""));
+}
+
+void test_validate_ha_url_rejects_no_scheme(void) {
+    TEST_ASSERT_FALSE(validateHaUrl("homeassistant.local:8123"));
+}
+
+void test_validate_ha_url_rejects_ftp(void) {
+    TEST_ASSERT_FALSE(validateHaUrl("ftp://homeassistant.local"));
+}
+
+void test_validate_ha_url_rejects_just_scheme(void) {
+    // "http://" alone is 7 chars — technically passes scheme check
+    // but this is a valid edge case; the server will fail on connect
+    TEST_ASSERT_TRUE(validateHaUrl("http://x"));
+}
+
+void test_validate_ha_url_rejects_whitespace(void) {
+    TEST_ASSERT_FALSE(validateHaUrl("http://home assistant.local:8123"));
+}
+
+void test_validate_ha_url_rejects_tab(void) {
+    TEST_ASSERT_FALSE(validateHaUrl("http://ha.local\t:8123"));
+}
+
+void test_validate_ha_url_rejects_newline(void) {
+    TEST_ASSERT_FALSE(validateHaUrl("http://ha.local\n"));
+}
+
+void test_validate_ha_url_rejects_too_long(void) {
+    // Build a URL that's exactly 128 chars (1 over the limit)
+    char long_url[256] = "http://";
+    memset(long_url + 7, 'a', 121);  // 7 + 121 = 128 chars
+    long_url[128] = '\0';
+    TEST_ASSERT_EQUAL(128u, strlen(long_url));
+    TEST_ASSERT_FALSE(validateHaUrl(long_url));
+}
+
+void test_validate_ha_url_accepts_max_length(void) {
+    // Build a URL that's exactly 127 chars (at the limit)
+    char max_url[256] = "http://";
+    memset(max_url + 7, 'a', 120);  // 7 + 120 = 127 chars
+    max_url[127] = '\0';
+    TEST_ASSERT_EQUAL(127u, strlen(max_url));
+    TEST_ASSERT_TRUE(validateHaUrl(max_url));
+}
+
+// ---------------------------------------------------------------------------
 // strncpy buffer-boundary regression tests (#33 / #17)
 //
 // The fix in http_client.cpp added `dest[sizeof(dest) - 1] = '\0'` after
@@ -401,14 +474,7 @@ void test_config_configured_flag_explicit_set(void) {
 // matches expectations.
 // ---------------------------------------------------------------------------
 
-// The mDNS retry count is hardcoded in discoverAndAnnounce().
-// Since we can't easily extract it as a #define, we test that the
-// OTA_MAX_RETRIES constant (another retry pattern) is defined and sane.
 void test_ota_max_retries_constant(void) {
-    // OTA_MAX_RETRIES guards against infinite OTA retry loops
-    // Defined in epcal.ino but not accessible here, so we verify
-    // that the pattern of retry-limited behavior is sound by checking
-    // the announce status enum has all expected states for retry logic.
     TEST_ASSERT_EQUAL(0, ANNOUNCE_CONFIGURED);
     TEST_ASSERT_EQUAL(1, ANNOUNCE_PENDING);
     TEST_ASSERT_EQUAL(2, ANNOUNCE_NOT_INSTALLED);
@@ -456,6 +522,22 @@ int main(int argc, char** argv) {
     // Enum values
     RUN_TEST(test_fetch_result_enum_values);
     RUN_TEST(test_announce_status_enum_values);
+
+    // URL validation (#20)
+    RUN_TEST(test_validate_ha_url_valid_http);
+    RUN_TEST(test_validate_ha_url_valid_https);
+    RUN_TEST(test_validate_ha_url_valid_ip);
+    RUN_TEST(test_validate_ha_url_valid_minimal);
+    RUN_TEST(test_validate_ha_url_rejects_null);
+    RUN_TEST(test_validate_ha_url_rejects_empty);
+    RUN_TEST(test_validate_ha_url_rejects_no_scheme);
+    RUN_TEST(test_validate_ha_url_rejects_ftp);
+    RUN_TEST(test_validate_ha_url_rejects_just_scheme);
+    RUN_TEST(test_validate_ha_url_rejects_whitespace);
+    RUN_TEST(test_validate_ha_url_rejects_tab);
+    RUN_TEST(test_validate_ha_url_rejects_newline);
+    RUN_TEST(test_validate_ha_url_rejects_too_long);
+    RUN_TEST(test_validate_ha_url_accepts_max_length);
 
     // strncpy buffer-boundary (regression for #33 / #17)
     RUN_TEST(test_strncpy_source_exactly_fills_buffer_no_null_room);

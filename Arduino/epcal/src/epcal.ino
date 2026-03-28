@@ -17,6 +17,7 @@
 #include "config.h"
 #include "http_client.h"
 #include "display.h"
+#include "url_validation.h"
 
 // Watchdog timeout in seconds - if the ESP32 hangs longer than this, it reboots
 #define WDT_TIMEOUT 120
@@ -487,49 +488,77 @@ bool promptForHaUrl() {
       "<title>E-Ink Calendar</title>"
       "<style>"
       "body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}"
-      "h1{font-size:1.4em}input[type=text]{width:100%;padding:12px;font-size:1em;"
+      "h1{font-size:1.4em}input[type=url]{width:100%;padding:12px;font-size:1em;"
       "box-sizing:border-box;margin:8px 0}button{background:#03a9f4;color:#fff;"
       "border:none;padding:14px 24px;font-size:1em;cursor:pointer;width:100%}"
+      ".error{color:#d32f2f;font-size:0.9em;margin:4px 0;display:none}"
       "</style></head><body>"
       "<h1>E-Ink Calendar Setup</h1>"
       "<p>Home Assistant was not found automatically on your network.</p>"
       "<p>Enter your Home Assistant URL below:</p>"
-      "<form method='POST' action='/save'>"
-      "<input type='text' name='ha_url' placeholder='http://homeassistant.local:8123' "
-      "required autofocus>"
+      "<form method='POST' action='/save' onsubmit='return check()'>"
+      "<input type='url' id='ha_url' name='ha_url' placeholder='http://homeassistant.local:8123' "
+      "maxlength='127' required autofocus>"
+      "<div class='error' id='err'></div>"
       "<br><button type='submit'>Save</button>"
-      "</form></body></html>"
+      "</form>"
+      "<script>"
+      "function check(){"
+      "var u=document.getElementById('ha_url').value.trim();"
+      "var e=document.getElementById('err');"
+      "if(!u){e.textContent='URL is required';e.style.display='block';return false;}"
+      "if(u.indexOf('http://')!==0&&u.indexOf('https://')!==0)"
+      "{e.textContent='URL must start with http:// or https://';e.style.display='block';return false;}"
+      "if(u.length>127){e.textContent='URL is too long (max 127 characters)';e.style.display='block';return false;}"
+      "e.style.display='none';return true;}"
+      "</script>"
+      "</body></html>"
     );
   });
 
   server.on("/save", HTTP_POST, [&server, &submitted]() {
     String url = server.arg("ha_url");
-    if (url.length() > 0) {
-      // Remove trailing slash
-      if (url.endsWith("/")) url.remove(url.length() - 1);
+    url.trim();
 
-      strncpy(config.ha_url, url.c_str(), sizeof(config.ha_url) - 1);
-      config.ha_url[sizeof(config.ha_url) - 1] = '\0';
-      config.discovered = false;
-      config_save(&config);
-      cache_clear();
+    // Remove trailing slash
+    if (url.endsWith("/")) url.remove(url.length() - 1);
 
-      Serial.printf("HA URL saved: %s\n", config.ha_url);
-
-      server.send(200, "text/html",
+    if (!validateHaUrl(url.c_str())) {
+      Serial.printf("Invalid HA URL rejected: '%s'\n", url.c_str());
+      server.send(400, "text/html",
         "<!DOCTYPE html><html><head>"
         "<meta name='viewport' content='width=device-width,initial-scale=1'>"
-        "<style>body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}</style>"
+        "<style>body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}"
+        ".error{color:#d32f2f}</style>"
         "</head><body>"
-        "<h1>Saved!</h1>"
-        "<p>The display will now connect to Home Assistant.</p>"
+        "<h1 class='error'>Invalid URL</h1>"
+        "<p>The URL must start with <b>http://</b> or <b>https://</b> "
+        "and be at most 127 characters.</p>"
+        "<p><a href='/'>Go back</a></p>"
         "</body></html>"
       );
-
-      submitted = true;
-    } else {
-      server.send(400, "text/html", "<h1>URL is required</h1>");
+      return;
     }
+
+    strncpy(config.ha_url, url.c_str(), sizeof(config.ha_url) - 1);
+    config.ha_url[sizeof(config.ha_url) - 1] = '\0';
+    config.discovered = false;
+    config_save(&config);
+    cache_clear();
+
+    Serial.printf("HA URL saved: %s\n", config.ha_url);
+
+    server.send(200, "text/html",
+      "<!DOCTYPE html><html><head>"
+      "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+      "<style>body{font-family:sans-serif;max-width:480px;margin:40px auto;padding:0 20px}</style>"
+      "</head><body>"
+      "<h1>Saved!</h1>"
+      "<p>The display will now connect to Home Assistant.</p>"
+      "</body></html>"
+    );
+
+    submitted = true;
   });
 
   server.begin();
@@ -623,9 +652,13 @@ void saveParamsCallback() {
   // Get HA URL override from custom parameter
   const char* url = custom_ha_url.getValue();
   if (url && strlen(url) > 0) {
-    strncpy(config.ha_url, url, sizeof(config.ha_url) - 1);
-    config.ha_url[sizeof(config.ha_url) - 1] = '\0';
-    Serial.printf("HA URL override: %s\n", config.ha_url);
+    if (validateHaUrl(url)) {
+      strncpy(config.ha_url, url, sizeof(config.ha_url) - 1);
+      config.ha_url[sizeof(config.ha_url) - 1] = '\0';
+      Serial.printf("HA URL override: %s\n", config.ha_url);
+    } else {
+      Serial.printf("Invalid HA URL rejected: '%s'\n", url);
+    }
   }
 
   // Get refresh interval from custom parameter (in minutes, convert to seconds)
