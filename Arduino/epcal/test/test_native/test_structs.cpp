@@ -591,19 +591,27 @@ void test_default_refresh_interval_is_positive(void) {
     TEST_ASSERT_TRUE(DEFAULT_REFRESH_INTERVAL > 0);
 }
 
-void test_refresh_interval_floor_at_one_minute(void) {
-    // When server returns 0 minutes, the floor should clamp to 1 minute (60 seconds)
-    // This simulates: max(resp.refresh_interval, 1) * 60
-    uint32_t server_value = 0;
-    uint32_t floored = (server_value > 1 ? server_value : 1) * 60;
-    TEST_ASSERT_EQUAL_UINT32(60, floored);
+void test_refresh_interval_floor_in_tryAnnounce(void) {
+    // tryAnnounce applies max(resp.refresh_interval, 1) * 60 to floor at 1 minute
+    // (Arduino's max() macro expands to the ternary below)
+    uint32_t server_values[] = {0, 1, 15};
+    uint32_t expected[]      = {60, 60, 900};
+    for (int i = 0; i < 3; i++) {
+        uint32_t v = server_values[i];
+        uint32_t result = (v > 1 ? v : 1) * 60;
+        TEST_ASSERT_EQUAL_UINT32(expected[i], result);
+    }
 }
 
-void test_refresh_interval_floor_does_not_affect_normal_values(void) {
-    // When server returns 15 minutes, the floor should not change it
-    uint32_t server_value = 15;
-    uint32_t floored = (server_value > 1 ? server_value : 1) * 60;
-    TEST_ASSERT_EQUAL_UINT32(900, floored);
+void test_refresh_interval_no_floor_in_updateCalendar(void) {
+    // updateCalendar has a > 0 guard, so zero is never reached — values pass through directly
+    uint32_t server_values[] = {1, 15, 60};
+    uint32_t expected[]      = {60, 900, 3600};
+    for (int i = 0; i < 3; i++) {
+        // Simulates: if (checkResponse.refresh_interval > 0) { new_interval = val * 60; }
+        uint32_t result = server_values[i] * 60;
+        TEST_ASSERT_EQUAL_UINT32(expected[i], result);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -692,8 +700,8 @@ int main(int argc, char** argv) {
 
     // Refresh interval floor
     RUN_TEST(test_default_refresh_interval_is_positive);
-    RUN_TEST(test_refresh_interval_floor_at_one_minute);
-    RUN_TEST(test_refresh_interval_floor_does_not_affect_normal_values);
+    RUN_TEST(test_refresh_interval_floor_in_tryAnnounce);
+    RUN_TEST(test_refresh_interval_no_floor_in_updateCalendar);
 
     return UNITY_END();
 }

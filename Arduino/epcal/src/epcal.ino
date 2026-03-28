@@ -711,8 +711,9 @@ bool updateCalendar() {
     config.ha_url, endpoints.check, cache.etag, mac.c_str(), FIRMWARE_VERSION);
 
   // Update refresh interval if HA sent a new one
+  // Note: the > 0 guard already excludes zero, so no floor needed
   if (checkResponse.refresh_interval > 0) {
-    uint32_t new_interval = max(checkResponse.refresh_interval, 1) * 60;  // Floor: 1 min
+    uint32_t new_interval = checkResponse.refresh_interval * 60;
     if (new_interval != config.refresh_interval) {
       Serial.printf("Refresh interval updated: %d -> %d minutes\n",
                     config.refresh_interval / 60, checkResponse.refresh_interval);
