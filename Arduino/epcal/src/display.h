@@ -55,9 +55,20 @@ void display_send_red2(const uint8_t* data);
 void display_refresh();
 
 /**
- * Put display into sleep mode
+ * Put display into sleep mode (no-op if display was never initialized)
  */
 void display_sleep();
+
+/**
+ * Check if the display has been initialized
+ * (used internally by display_sleep guard and for testing)
+ */
+bool display_is_initialized();
+
+/**
+ * Reset the display initialized flag (for testing only)
+ */
+void display_reset_initialized();
 
 /**
  * Display a simple text message (for status/errors during setup)
