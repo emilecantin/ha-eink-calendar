@@ -22,7 +22,8 @@ def draw_landscape_week_section(
     is_red: bool,
     weather_data: WeatherData | None = None,
     waste_events: list[CalendarEvent] | None = None,
-    img: Image.Image | None = None,
+    *,
+    img: Image.Image,
     lang: str = "fr",
 ) -> None:
     """Draw the Week section in landscape layout (6-day columns).
@@ -35,14 +36,10 @@ def draw_landscape_week_section(
         is_red: Whether drawing on red layer
         weather_data: Weather data from coordinator (optional)
         waste_events: Processed waste collection events
+        img: PIL Image object for pasting icons
     """
     if waste_events is None:
         waste_events = []
-
-    # Get image from draw context if not provided (needed for pasting icons)
-    if img is None:
-        # ImageDraw.Draw stores reference to the image in _image attribute
-        img = draw._image
 
     section_x = LAYOUT_LANDSCAPE["TODAY"]["width"]
     section_width = LAYOUT_LANDSCAPE["RIGHT_PANEL"]["width"]
