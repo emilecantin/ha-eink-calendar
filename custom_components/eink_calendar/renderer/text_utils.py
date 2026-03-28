@@ -10,6 +10,9 @@ def capitalize(text: str) -> str:
 
 def truncate_text(text: str, max_width: int, font: ImageFont.FreeTypeFont) -> str:
     """Truncate text to fit within max_width pixels."""
+    if not text or max_width <= 0:
+        return ""
+
     # Create a temporary draw object for measuring
     from PIL import Image
 
@@ -22,13 +25,21 @@ def truncate_text(text: str, max_width: int, font: ImageFont.FreeTypeFont) -> st
     if text_width <= max_width:
         return text
 
-    # Binary search for the right length
-    while text and text_width > max_width:
-        text = text[:-4] + "..."  # Remove chars and add ellipsis
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_width = bbox[2] - bbox[0]
+    # Progressively shorten the base text and append ellipsis.
+    # Strip one character at a time from the base portion until it fits.
+    ellipsis = "..."
+    for end in range(len(text) - 1, 0, -1):
+        candidate = text[:end] + ellipsis
+        bbox = draw.textbbox((0, 0), candidate, font=font)
+        if bbox[2] - bbox[0] <= max_width:
+            return candidate
 
-    return text
+    # Even a single character + ellipsis didn't fit; try ellipsis alone
+    bbox = draw.textbbox((0, 0), ellipsis, font=font)
+    if bbox[2] - bbox[0] <= max_width:
+        return ellipsis
+
+    return ""
 
 
 def wrap_text(
