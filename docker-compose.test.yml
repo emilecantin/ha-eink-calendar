@@ -1,0 +1,24 @@
+services:
+  # Home Assistant instance for integration testing.
+  # Uses a dedicated test config and exposes on port 18123 to avoid
+  # conflicts with a dev HA instance on the default 8123.
+  homeassistant:
+    container_name: ha-epcal-integration-test
+    image: homeassistant/home-assistant:latest
+    volumes:
+      # Seed config from tracked template; HA will write runtime files here
+      - ./ha-test-config:/config
+      # Mount the tracked configuration.yaml from the test directory
+      - ./custom_components/eink_calendar/tests/integration/ha-config/configuration.yaml:/config/configuration.yaml:ro
+      # Mount the custom component
+      - ./custom_components/eink_calendar:/config/custom_components/eink_calendar:ro
+    ports:
+      - "18123:8123"
+    environment:
+      - TZ=America/Toronto
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8123"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s

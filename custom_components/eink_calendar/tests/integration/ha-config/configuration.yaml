@@ -1,0 +1,22 @@
+# Minimal Home Assistant configuration for integration testing.
+# The eink_calendar component is mounted read-only via docker-compose.test.yml.
+
+homeassistant:
+  name: "Integration Test"
+  unit_system: metric
+  time_zone: America/Toronto
+
+# Enable the HTTP API (required for integration tests)
+http:
+  server_port: 8123
+
+# Enable API for long-lived access tokens
+api:
+
+# Load our custom component
+eink_calendar:
+
+logger:
+  default: info
+  logs:
+    custom_components.eink_calendar: debug
