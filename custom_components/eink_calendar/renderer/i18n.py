@@ -55,6 +55,40 @@ def format_month_abbr(dt: datetime, lang: str = DEFAULT_LANG) -> str:
     return _get(lang, "month_abbrs")[dt.month]
 
 
+def format_short_date(dt: datetime, lang: str = DEFAULT_LANG) -> str:
+    """Short date with abbreviated month, e.g. 'JAN 27' (en) / '27 JAN' (fr)."""
+    month = format_month_abbr(dt, lang)
+    if lang == "en":
+        return f"{month} {dt.day}"
+    return f"{dt.day} {month}"
+
+
+def format_short_date_range(
+    start: datetime, end: datetime, lang: str = DEFAULT_LANG
+) -> str:
+    """Short date range, e.g. 'JAN 25-27' (en) / '25-27 JAN' (fr).
+
+    When the range crosses months, both months are shown:
+    'JAN 30-FEB 2' (en) / '30 JAN-2 FÉV' (fr).
+    """
+    same_month = start.month == end.month and start.year == end.year
+    if same_month:
+        month = format_month_abbr(start, lang)
+        if lang == "en":
+            return f"{month} {start.day}-{end.day}"
+        return f"{start.day}-{end.day} {month}"
+    else:
+        if lang == "en":
+            return (
+                f"{format_month_abbr(start, lang)} {start.day}"
+                f"-{format_month_abbr(end, lang)} {end.day}"
+            )
+        return (
+            f"{start.day} {format_month_abbr(start, lang)}"
+            f"-{end.day} {format_month_abbr(end, lang)}"
+        )
+
+
 def format_date(dt: datetime, lang: str = DEFAULT_LANG) -> str:
     """Full date string, e.g. '26 janvier 2026' / 'January 26, 2026'."""
     month = _get(lang, "month_names")[dt.month]
