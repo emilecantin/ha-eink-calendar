@@ -228,9 +228,8 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 image_changed = not (if_none_match and if_none_match == etag)
 
                 # Force refresh overrides ETag match
-                if coordinator._force_refresh:
+                if coordinator.consume_force_refresh():
                     image_changed = True
-                    coordinator._force_refresh = False
 
                 if if_none_match:
                     coordinator.device_etag = if_none_match
@@ -353,13 +352,10 @@ class EinkCalendarErrorView(HomeAssistantView):
             details = data.get("details", "")
             error_msg = f"{error}: {details}" if details else error
 
-            # Get coordinator and record the error
+            # Get coordinator and record the error (also fires checkin callbacks)
             coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
             if coordinator:
                 coordinator.record_device_error(error_msg)
-                # Notify checkin callbacks so sensors update
-                for callback in coordinator._checkin_callbacks:
-                    callback()
 
             _LOGGER.warning(
                 "Device error reported for entry %s: %s", entry_id, error_msg
