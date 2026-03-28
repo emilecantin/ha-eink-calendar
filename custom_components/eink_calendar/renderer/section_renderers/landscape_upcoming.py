@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 
 from PIL import Image, ImageDraw
 
-from ..i18n import format_short_date, format_short_date_range
+from ..i18n import format_short_date, format_short_date_range, get_section_title
 from ..icon_utils import get_mdi_icon
 from ..layout_config import COLORS, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import truncate_text
@@ -137,7 +137,7 @@ def draw_landscape_upcoming_section(
         header_font = fonts["bold"][20]
         draw.text(
             (section_x + 10, section_y + 20),
-            "À VENIR",
+            get_section_title("upcoming", lang),
             fill=COLORS["BLACK"],
             font=header_font,
         )

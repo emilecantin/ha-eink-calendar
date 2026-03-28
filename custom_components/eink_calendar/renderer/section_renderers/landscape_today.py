@@ -2,12 +2,12 @@
 
 from datetime import datetime
 
-from PIL import Image, ImageChops, ImageDraw, ImageOps
+from PIL import Image, ImageDraw
 
 from ..event_filters import get_collection_icons_for_day, get_events_for_day
 from ..event_renderer import draw_event_triangle, draw_overflow_indicator
-from ..i18n import format_date, format_day_name
-from ..icon_utils import get_mdi_icon
+from ..i18n import format_date, format_day_name, get_section_title
+from ..icon_utils import create_inverted_icon, get_mdi_icon
 from ..layout_config import COLORS, DISPLAY, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import truncate_text, wrap_text
 from ..types import CalendarEvent, FontDict, WeatherData
@@ -167,23 +167,7 @@ def draw_landscape_today_section(
 
                 # On red layer, create white version with opacity-based anti-aliasing
                 if is_red:
-                    # Get the original alpha and RGB channels
-                    r, g, b, a = icon.split()
-
-                    # Convert RGB to grayscale (icon is black/gray on transparent background)
-                    gray = icon.convert("L")
-
-                    # Invert grayscale: black (0) → white (255), white (255) → black (0)
-                    # This gives us opacity map: icon parts are bright, background is dark
-                    inverted_gray = ImageOps.invert(gray)
-
-                    # Multiply with original alpha to respect transparency
-                    # This ensures transparent areas stay transparent
-                    combined_alpha = ImageChops.multiply(inverted_gray, a)
-
-                    # Create pure white image with combined alpha
-                    white_icon = Image.new("RGBA", icon.size, (255, 255, 255, 255))
-                    white_icon.putalpha(combined_alpha)
+                    white_icon = create_inverted_icon(icon)
                     img.paste(white_icon, (icon_x, int(header_y + 10)), white_icon)
                 else:
                     img.paste(icon, (icon_x, int(header_y + 10)), icon)
@@ -392,11 +376,11 @@ def draw_landscape_today_section(
 
     # Legend at bottom
     if legend and not is_red:
-        # "Légende" header
+        # Legend header
         legend_header_font = fonts["bold"][14]
         draw.text(
             (legend_x, legend_top),
-            "Légende",
+            get_section_title("legend", lang),
             fill=COLORS["BLACK"],
             font=legend_header_font,
         )

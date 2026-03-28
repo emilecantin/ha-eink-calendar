@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from renderer.i18n import format_short_date, format_short_date_range
+from renderer.i18n import format_short_date, format_short_date_range, get_section_title
 
 
 class TestFormatShortDate:
@@ -51,3 +51,23 @@ class TestFormatShortDateRange:
         start = datetime(2026, 1, 30)
         end = datetime(2026, 2, 2)
         assert format_short_date_range(start, end, "fr") == "30 JAN-2 FÉV"
+
+
+class TestGetSectionTitle:
+    """Test locale-aware section title strings."""
+
+    def test_legend_french(self):
+        assert get_section_title("legend", "fr") == "Légende"
+
+    def test_legend_english(self):
+        assert get_section_title("legend", "en") == "Legend"
+
+    def test_upcoming_french(self):
+        assert get_section_title("upcoming", "fr") == "À VENIR"
+
+    def test_upcoming_english(self):
+        assert get_section_title("upcoming", "en") == "UPCOMING"
+
+    def test_unknown_lang_falls_back_to_french(self):
+        assert get_section_title("legend", "de") == "Légende"
+        assert get_section_title("upcoming", "de") == "À VENIR"

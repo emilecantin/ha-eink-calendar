@@ -10,7 +10,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFont, ImageOps
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,6 +180,34 @@ def get_mdi_icon(
     if icon is None and fallback:
         icon = get_icon(fallback, size)
     return icon
+
+
+def create_inverted_icon(icon: Image.Image) -> Image.Image:
+    """Create a white version of an RGBA icon with opacity-based anti-aliasing.
+
+    Takes an icon rendered as black/gray on transparent background and returns
+    a white version suitable for pasting onto colored backgrounds (e.g., red
+    weekend headers on e-paper).
+
+    The logic:
+    1. Convert RGB to grayscale
+    2. Invert grayscale (black->white mapping gives opacity)
+    3. Multiply with original alpha to preserve transparency
+    4. Apply as alpha to a pure white image
+
+    Args:
+        icon: RGBA PIL Image with black/gray pixels on transparent background
+
+    Returns:
+        RGBA PIL Image with white pixels and combined alpha
+    """
+    _r, _g, _b, a = icon.split()
+    gray = icon.convert("L")
+    inverted_gray = ImageOps.invert(gray)
+    combined_alpha = ImageChops.multiply(inverted_gray, a)
+    white_icon = Image.new("RGBA", icon.size, (255, 255, 255, 255))
+    white_icon.putalpha(combined_alpha)
+    return white_icon
 
 
 def list_available_icons() -> list[str]:

@@ -2,12 +2,12 @@
 
 from datetime import datetime, timedelta
 
-from PIL import Image, ImageChops, ImageDraw, ImageOps
+from PIL import Image, ImageDraw
 
 from ..event_filters import get_collection_icons_for_day, get_events_for_day
 from ..event_renderer import draw_overflow_indicator, sort_events_by_priority
 from ..i18n import format_day_abbr
-from ..icon_utils import get_mdi_icon
+from ..icon_utils import create_inverted_icon, get_mdi_icon
 from ..layout_config import COLORS, DISPLAY, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import wrap_text
 from ..types import CalendarEvent, FontDict, WeatherData
@@ -221,23 +221,7 @@ def draw_landscape_week_section(
 
                     # On red layer, create white version with opacity-based anti-aliasing
                     if is_red:
-                        # Get the original alpha and RGB channels
-                        r, g, b, a = icon.split()
-
-                        # Convert RGB to grayscale (icon is black/gray on transparent background)
-                        gray = icon.convert("L")
-
-                        # Invert grayscale: black (0) → white (255), white (255) → black (0)
-                        # This gives us opacity map: icon parts are bright, background is dark
-                        inverted_gray = ImageOps.invert(gray)
-
-                        # Multiply with original alpha to respect transparency
-                        # This ensures transparent areas stay transparent
-                        combined_alpha = ImageChops.multiply(inverted_gray, a)
-
-                        # Create pure white image with combined alpha
-                        white_icon = Image.new("RGBA", icon.size, (255, 255, 255, 255))
-                        white_icon.putalpha(combined_alpha)
+                        white_icon = create_inverted_icon(icon)
                         img.paste(
                             white_icon, (int(icon_x), int(grid_top + 18)), white_icon
                         )
