@@ -171,13 +171,12 @@ void setup() {
     // Android probes
     wm.server->on("/generate_204", HTTP_GET, redirect);
     wm.server->on("/gen_204", HTTP_GET, redirect);
-    // Google connectivity check
+    // Google / Microsoft connectivity check
     wm.server->on("/connecttest.txt", HTTP_GET, redirect);
     // Apple captive portal detection
     wm.server->on("/hotspot-detect.html", HTTP_GET, redirect);
     // Microsoft NCSI
     wm.server->on("/ncsi.txt", HTTP_GET, redirect);
-    wm.server->on("/connecttest.txt", HTTP_GET, redirect);
     // Firefox captive portal detection
     wm.server->on("/canonical.html", HTTP_GET, redirect);
     wm.server->on("/success.txt", HTTP_GET, redirect);
@@ -407,10 +406,17 @@ bool discoverAndAnnounce() {
 
   Serial.println("Discovering Home Assistant via mDNS...");
 
-  int n = MDNS.queryService("home-assistant", "tcp");
+  // Retry mDNS discovery up to 3 times — the first query can fail if the
+  // network stack hasn't fully settled after WiFi connect.
+  int n = 0;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    n = MDNS.queryService("home-assistant", "tcp");
+    if (n > 0) break;
+    Serial.printf("mDNS attempt %d/3: no results, retrying in 1s...\n", attempt);
+    delay(1000);
+  }
   if (n == 0) {
-    Serial.println("No Home Assistant found via mDNS");
-
+    Serial.println("No Home Assistant found via mDNS after 3 attempts");
     return false;
   }
 
