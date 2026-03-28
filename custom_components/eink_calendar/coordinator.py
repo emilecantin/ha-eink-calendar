@@ -52,6 +52,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self.device_etag: str = "unknown"
         self._device_error: str | None = None
         self._is_overdue: bool = False
+        self._updating_firmware: bool = False
 
     def on_checkin(self, callback) -> None:
         """Register a callback for device check-in events."""
@@ -64,6 +65,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self.checkin_count += 1
         self._device_error = None
         self._is_overdue = False
+        self._updating_firmware = False
         if firmware_version is not None:
             self.firmware_version = firmware_version
         for callback in self._checkin_callbacks:
@@ -74,6 +76,8 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Compute device status from internal state."""
         if self._device_error is not None:
             return f"error: {self._device_error}"
+        if self._updating_firmware:
+            return "updating_firmware"
         if self._is_overdue:
             return "overdue"
         if self._is_rapid_checkin():
@@ -96,6 +100,12 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             self.entry.options.get("refresh_interval", 15) * 60
         )
         return median_interval < 0.5 * refresh_interval_seconds
+
+    def record_firmware_update(self) -> None:
+        """Record that the device is downloading a firmware update."""
+        self._updating_firmware = True
+        for callback in self._checkin_callbacks:
+            callback()
 
     def record_device_error(self, error: str) -> None:
         """Record an error reported by the device."""

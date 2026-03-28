@@ -132,6 +132,7 @@ class EinkCalendarDeviceStatusSensor(SensorEntity):
 
     _STATUS_ICONS = {
         "healthy": "mdi:check-circle",
+        "updating_firmware": "mdi:cellphone-arrow-down",
         "rapid_checkin": "mdi:speedometer",
         "overdue": "mdi:clock-alert",
         "unknown": "mdi:help-circle",

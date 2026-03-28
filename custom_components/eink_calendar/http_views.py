@@ -401,6 +401,15 @@ class EinkCalendarFirmwareView(HomeAssistantView):
                 _read_file, fw_path
             )
 
+            # Mark device as updating firmware
+            coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
+            if coordinator:
+                coordinator.record_firmware_update()
+                _LOGGER.info(
+                    "Serving firmware v%s to entry %s (%d bytes)",
+                    info["version"], entry_id, len(firmware_data),
+                )
+
             return web.Response(
                 body=firmware_data,
                 content_type="application/octet-stream",

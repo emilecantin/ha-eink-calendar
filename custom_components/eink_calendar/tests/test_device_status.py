@@ -168,6 +168,32 @@ class TestDeviceStatusStateMachine:
         coord.record_checkin()
         assert coord.device_status == "healthy"
 
+    def test_updating_firmware_state(self):
+        """record_firmware_update sets updating_firmware, check-in clears it."""
+        coord = make_coordinator()
+        coord.record_checkin()
+        assert coord.device_status == "healthy"
+        coord.record_firmware_update()
+        assert coord.device_status == "updating_firmware"
+        coord.record_checkin()
+        assert coord.device_status == "healthy"
+
+    def test_updating_firmware_not_overridden_by_overdue(self):
+        """updating_firmware takes priority over overdue."""
+        coord = make_coordinator()
+        coord.record_checkin()
+        coord.record_firmware_update()
+        # Even if we evaluate overdue, updating_firmware wins
+        coord._is_overdue = True
+        assert coord.device_status == "updating_firmware"
+
+    def test_error_overrides_updating_firmware(self):
+        """Error takes priority over updating_firmware."""
+        coord = make_coordinator()
+        coord.record_firmware_update()
+        coord.record_device_error("ota_failed")
+        assert coord.device_status == "error: ota_failed"
+
     def test_error_reported_and_cleared_by_checkin(self):
         """Error reported via record_device_error clears on next checkin."""
         coord = make_coordinator()
