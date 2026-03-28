@@ -35,19 +35,21 @@ def get_events_for_day(events: list[CalendarEvent], day: datetime) -> list[Event
     Returns:
         Events for the day with start/end indicators
     """
-    # Ensure day_start has the same timezone awareness as the events
-    day_start = datetime.combine(day.date(), time.min)
+    # Determine the target timezone from the day parameter
+    target_tz = day.tzinfo
 
-    # If day is naive but events might be aware, use first event's timezone
-    if day.tzinfo is None and events:
-        # Check if events have timezone info
+    # If day is naive but events are aware, find the first event's timezone
+    # to use as the reference (for backward compatibility)
+    if target_tz is None and events:
         for event in events:
             start = event.get("start")
             if start and hasattr(start, "tzinfo") and start.tzinfo is not None:
-                day_start = day_start.replace(tzinfo=start.tzinfo)
+                target_tz = start.tzinfo
                 break
-    elif day.tzinfo is not None:
-        day_start = day_start.replace(tzinfo=day.tzinfo)
+
+    day_start = datetime.combine(day.date(), time.min)
+    if target_tz is not None:
+        day_start = day_start.replace(tzinfo=target_tz)
 
     result = []
     for event in events:
@@ -58,38 +60,37 @@ def get_events_for_day(events: list[CalendarEvent], day: datetime) -> list[Event
         if not event_start or not event_end:
             continue
 
-        # Normalize timezone awareness for comparison
-        # If one is aware and the other is naive, make both naive for comparison
-        compare_start = event_start
-        compare_end = event_end
-        compare_day_start = day_start
+        # Convert event times to the target timezone for proper comparison
+        # instead of stripping tzinfo (which loses time offset information)
+        if target_tz is not None and event_start.tzinfo is not None:
+            # Both aware: convert event to target timezone
+            local_start = event_start.astimezone(target_tz)
+            local_end = event_end.astimezone(target_tz)
+        elif target_tz is None and event_start.tzinfo is not None:
+            # Day is naive, event is aware: strip tz (no target to convert to)
+            local_start = event_start.replace(tzinfo=None)
+            local_end = event_end.replace(tzinfo=None)
+        elif target_tz is not None and event_start.tzinfo is None:
+            # Day is aware, event is naive (e.g., all-day events): treat as target tz
+            local_start = event_start.replace(tzinfo=target_tz)
+            local_end = event_end.replace(tzinfo=target_tz)
+        else:
+            # Both naive: use as-is
+            local_start = event_start
+            local_end = event_end
 
-        # Convert all to naive if there's a mismatch
-        if (event_start.tzinfo is None) != (day_start.tzinfo is None):
-            compare_start = (
-                event_start.replace(tzinfo=None) if event_start.tzinfo else event_start
-            )
-            compare_end = (
-                event_end.replace(tzinfo=None) if event_end.tzinfo else event_end
-            )
-            compare_day_start = (
-                day_start.replace(tzinfo=None) if day_start.tzinfo else day_start
-            )
-
-        # Check if event starts on this day
-        starts_on_day = event_start.date() == day.date()
+        # Check if event starts on this day (using converted local times)
+        starts_on_day = local_start.date() == day.date()
 
         # Check if event spans this day (started before, ends on/after)
-        spans_day = (
-            compare_start < compare_day_start and compare_end >= compare_day_start
-        )
+        spans_day = local_start < day_start and local_end >= day_start
 
         if starts_on_day or spans_day:
             result.append(
                 {
                     "event": event,
-                    "startsOnDay": event_start.date() == day.date(),
-                    "endsOnDay": event_end.date() == day.date(),
+                    "startsOnDay": local_start.date() == day.date(),
+                    "endsOnDay": local_end.date() == day.date(),
                 }
             )
 
