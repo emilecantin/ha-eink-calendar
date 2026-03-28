@@ -371,7 +371,6 @@ bool tryAnnounce(const char* ha_url) {
     // Save this URL so we keep polling the same instance
     strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
     config.ha_url[sizeof(config.ha_url) - 1] = '\0';
-    config.configured = true;
     config_save(&config);
 
     display_show_message("Waiting for Home Assistant", "Configure in Settings > Devices");
@@ -383,7 +382,6 @@ bool tryAnnounce(const char* ha_url) {
     // HA is there but the integration isn't installed yet — save URL, ask user to install
     strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
     config.ha_url[sizeof(config.ha_url) - 1] = '\0';
-    config.configured = true;
     config_save(&config);
 
     display_show_install_screen("https://github.com/emilecantin/ha-eink-calendar");
@@ -506,7 +504,6 @@ bool promptForHaUrl() {
 
       strncpy(config.ha_url, url.c_str(), sizeof(config.ha_url) - 1);
       config.ha_url[sizeof(config.ha_url) - 1] = '\0';
-      config.configured = true;
       config.discovered = false;
       config_save(&config);
       cache_clear();
@@ -640,7 +637,6 @@ void saveParamsCallback() {
     config.refresh_interval = DEFAULT_REFRESH_INTERVAL;
   }
 
-  config.configured = true;
   // Reset discovery state so we re-announce
   config.discovered = false;
 
