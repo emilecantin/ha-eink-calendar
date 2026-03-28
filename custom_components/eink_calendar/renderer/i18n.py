@@ -89,6 +89,32 @@ def format_short_date_range(
         )
 
 
+_SECTION_TITLES: dict[str, dict[str, str]] = {
+    "fr": {
+        "legend": "Légende",
+        "upcoming": "À VENIR",
+    },
+    "en": {
+        "legend": "Legend",
+        "upcoming": "UPCOMING",
+    },
+}
+
+
+def get_section_title(key: str, lang: str = DEFAULT_LANG) -> str:
+    """Get a translated section title by key.
+
+    Args:
+        key: Section key (e.g., "legend", "upcoming")
+        lang: Language code ("fr", "en")
+
+    Returns:
+        Translated section title string, falls back to French for unknown languages
+    """
+    titles = _SECTION_TITLES.get(lang, _SECTION_TITLES[DEFAULT_LANG])
+    return titles[key]
+
+
 def format_date(dt: datetime, lang: str = DEFAULT_LANG) -> str:
     """Full date string, e.g. '26 janvier 2026' / 'January 26, 2026'."""
     month = _get(lang, "month_names")[dt.month]
