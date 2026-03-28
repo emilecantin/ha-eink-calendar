@@ -119,4 +119,8 @@ sys.modules["homeassistant.components.sensor"].SensorDeviceClass = MagicMock()
 sys.modules["homeassistant.helpers.update_coordinator"].DataUpdateCoordinator = (
     _FakeDataUpdateCoordinator
 )
-sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = Exception
+class _FakeUpdateFailed(Exception):
+    """Stand-in for homeassistant.helpers.update_coordinator.UpdateFailed."""
+
+
+sys.modules["homeassistant.helpers.update_coordinator"].UpdateFailed = _FakeUpdateFailed

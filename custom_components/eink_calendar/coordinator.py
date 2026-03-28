@@ -245,6 +245,8 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
                 _LOGGER.error("Pre-render failed: %s", render_err, exc_info=True)
 
             return result
+        except UpdateFailed:
+            raise
         except Exception as err:
             raise UpdateFailed(f"Error communicating with API: {err}") from err
 
