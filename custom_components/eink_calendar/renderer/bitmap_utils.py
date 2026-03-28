@@ -2,6 +2,7 @@
 
 import hashlib
 
+import numpy as np
 from PIL import Image
 
 
@@ -9,7 +10,7 @@ def image_to_1bit(img: Image.Image, is_red_layer: bool = False) -> bytes:
     """Convert PIL Image to 1-bit packed bitmap for e-paper.
 
     E-paper format: 0 = colored (black/red), 1 = white/transparent.
-    Bitmap starts as all 0xFF (white), colored pixels clear bits to 0.
+    Uses NumPy vectorized operations for performance.
 
     Args:
         img: PIL Image in RGB mode
@@ -19,34 +20,34 @@ def image_to_1bit(img: Image.Image, is_red_layer: bool = False) -> bytes:
         Packed 1-bit bitmap (0 = colored, 1 = white)
     """
     width, height = img.size
-    pixels = img.load()
+    arr = np.array(img)  # shape: (height, width, 3+)
 
-    # Calculate packed size (8 pixels per byte, MSB first)
-    bytes_per_row = (width + 7) // 8
-    bitmap = bytearray(b'\xff' * (bytes_per_row * height))
+    r = arr[:, :, 0].astype(np.float64)
+    g = arr[:, :, 1].astype(np.float64)
+    b = arr[:, :, 2].astype(np.float64)
 
-    for y in range(height):
-        for x in range(width):
-            pixel_raw = pixels[x, y]  # pyright: ignore[reportOptionalSubscript]
-            if not isinstance(pixel_raw, tuple) or len(pixel_raw) < 3:
-                continue
-            r, g, b = int(pixel_raw[0]), int(pixel_raw[1]), int(pixel_raw[2])
+    is_red_color = (r > 150) & (g < 100) & (b < 100)
 
-            is_red_color = r > 150 and g < 100 and b < 100
+    if is_red_layer:
+        is_colored = is_red_color
+    else:
+        brightness = (r + g + b) / 3.0
+        is_colored = (brightness < 170) & ~is_red_color
 
-            if is_red_layer:
-                is_colored = is_red_color
-            else:
-                # Black layer: dark pixels that aren't red
-                brightness = (r + g + b) / 3
-                is_colored = brightness < 170 and not is_red_color
+    # E-paper: 1 = white, 0 = colored -> invert the mask
+    white_bits = ~is_colored  # True = white (bit=1)
 
-            if is_colored:
-                byte_index = y * bytes_per_row + x // 8
-                bit_index = 7 - (x % 8)  # MSB first
-                bitmap[byte_index] &= ~(1 << bit_index)
+    # Pad width to multiple of 8 for packbits
+    pad_cols = (-width) % 8
+    if pad_cols:
+        white_bits = np.pad(
+            white_bits, ((0, 0), (0, pad_cols)), constant_values=True
+        )
 
-    return bytes(bitmap)
+    # Pack bits MSB-first: each group of 8 bools -> 1 byte
+    packed = np.packbits(white_bits.astype(np.uint8), axis=1)
+
+    return packed.tobytes()
 
 
 def extract_chunk(bitmap: bytes, width: int, height: int, top_half: bool) -> bytes:

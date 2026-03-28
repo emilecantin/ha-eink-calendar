@@ -47,23 +47,3 @@ SERVICE_REFRESH = "refresh"
 
 # Firmware
 FIRMWARE_MANAGER_KEY = "firmware_manager"
-
-# MDI icon to Unicode symbol mapping for calendar icons
-MDI_TO_UNICODE = {
-    "mdi:calendar": "●",
-    "mdi:briefcase": "■",
-    "mdi:home": "▲",
-    "mdi:school": "◆",
-    "mdi:heart": "♥",
-    "mdi:star": "★",
-    "mdi:flag": "⚑",
-    "mdi:trophy": "🏆",
-    "mdi:cake": "🎂",
-    "mdi:gift": "🎁",
-    "mdi:phone": "☎",
-    "mdi:email": "✉",
-    "mdi:car": "🚗",
-    "mdi:airplane": "✈",
-    "mdi:account": "👤",
-    "mdi:account-multiple": "👥",
-}

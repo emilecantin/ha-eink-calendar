@@ -1,5 +1,6 @@
 pytest
 pillow
+numpy
 python-dateutil
 pytest-asyncio
 aiohttp
