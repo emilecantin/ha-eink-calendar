@@ -6,7 +6,7 @@ import logging
 import statistics
 from collections import deque
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -45,7 +45,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self._cached_render_timestamp: datetime | None = None
         self._last_etag: str | None = None
         self._force_refresh: bool = False
-        self._checkin_callbacks: list = []
+        self._checkin_callbacks: set = set()
         # Device status state machine
         self._checkin_timestamps: deque = deque(maxlen=10)
         self.checkin_count: int = 0
@@ -54,9 +54,17 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self._is_overdue: bool = False
         self._updating_firmware: bool = False
 
-    def on_checkin(self, callback) -> None:
-        """Register a callback for device check-in events."""
-        self._checkin_callbacks.append(callback)
+    def on_checkin(self, callback) -> Callable[[], None]:
+        """Register a callback for device check-in events.
+
+        Returns a callable that removes the callback when called.
+        """
+        self._checkin_callbacks.add(callback)
+
+        def remove():
+            self._checkin_callbacks.discard(callback)
+
+        return remove
 
     def record_checkin(self, firmware_version: str | None = None) -> None:
         """Record a device check-in and notify check-in listeners only."""
@@ -108,8 +116,10 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
             callback()
 
     def record_device_error(self, error: str) -> None:
-        """Record an error reported by the device."""
+        """Record an error reported by the device and notify listeners."""
         self._device_error = error
+        for callback in self._checkin_callbacks:
+            callback()
 
     def clear_device_error(self) -> None:
         """Clear the current device error."""
@@ -138,6 +148,13 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Force the ESP32 to re-download bitmaps on the next check-in."""
         self._force_refresh = True
         self.invalidate_render_cache()
+
+    def consume_force_refresh(self) -> bool:
+        """Check and clear the force refresh flag. Returns True if it was set."""
+        if self._force_refresh:
+            self._force_refresh = False
+            return True
+        return False
 
     async def async_get_rendered(self):
         """Get cached rendered calendar, re-rendering only when data changes."""
