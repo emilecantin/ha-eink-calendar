@@ -807,8 +807,11 @@ bool updateCalendar() {
       cache.etag[sizeof(cache.etag) - 1] = '\0';
     }
     if (resp.bytes_read != CHUNK_BUFFER_SIZE) {
-      Serial.printf("WARNING: chunk %s size mismatch: got %zu, expected %d\n",
+      Serial.printf("ERROR: chunk %s size mismatch: got %zu, expected %d\n",
                     chunk_endpoints[i], resp.bytes_read, CHUNK_BUFFER_SIZE);
+      success = false;
+      failedEndpoint = chunk_endpoints[i];
+      break;
     }
     File f = LittleFS.open(chunk_files[i], FILE_WRITE);
     if (!f) {

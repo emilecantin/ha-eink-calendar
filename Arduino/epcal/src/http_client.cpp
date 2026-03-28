@@ -21,22 +21,16 @@ static WiFiClient plainClient;
  * (acceptable for LAN-only device communication).
  */
 static void httpBegin(HTTPClient& http, const String& url) {
-  // Only stop the client that was actually used last — stopping both
-  // wastes time and can cause unnecessary TLS teardown overhead.
-  static bool lastWasSecure = false;
-  if (lastWasSecure) {
-    secureClient.stop();
-  } else {
-    plainClient.stop();
-  }
+  // Stop both clients to ensure clean state — costs microseconds on a
+  // device that sleeps 15+ minutes, not worth optimizing.
+  secureClient.stop();
+  plainClient.stop();
 
   if (url.startsWith("https://")) {
     secureClient.setInsecure();
     http.begin(secureClient, url);
-    lastWasSecure = true;
   } else {
     http.begin(plainClient, url);
-    lastWasSecure = false;
   }
   http.setTimeout(HTTP_TIMEOUT);
 }
