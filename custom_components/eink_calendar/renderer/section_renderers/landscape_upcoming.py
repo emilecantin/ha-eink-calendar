@@ -10,6 +10,88 @@ from ..layout_config import COLORS, LAYOUT_LANDSCAPE, MARGINS
 from ..text_utils import truncate_text
 from ..types import CalendarEvent, FontDict
 
+# Important event prefix — events whose title starts with '!' bypass
+# the multi-day/all-day filter in the upcoming section.
+IMPORTANT_PREFIX = "!"
+
+
+def _is_important(title: str) -> bool:
+    """Return True if the event title starts with the important prefix."""
+    return title.startswith(IMPORTANT_PREFIX)
+
+
+def _strip_important_prefix(title: str) -> str:
+    """Strip the '!' prefix (and optional trailing space) from a title."""
+    stripped = title[len(IMPORTANT_PREFIX) :]
+    return stripped.lstrip()
+
+
+def filter_upcoming_events(
+    events: list[CalendarEvent],
+    today: datetime,
+) -> list[CalendarEvent]:
+    """Filter and prepare events for the upcoming section.
+
+    Includes:
+    - Multi-day or all-day events starting after the 7-day window
+    - Events marked as important (title starts with '!') starting after the window
+
+    Important events have their '!' prefix stripped and an 'important' flag set.
+
+    Args:
+        events: List of all calendar events (already processed)
+        today: Current date
+
+    Returns:
+        Filtered list of upcoming events, sorted by date, max 12
+    """
+    window_end = (today + timedelta(days=7)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+    upcoming_events = []
+    for event in events:
+        event_start = event.get("start")
+        event_end = event.get("end")
+        if not event_start or not event_end:
+            continue
+
+        # Check if multi-day or all-day
+        days_diff = (event_end.date() - event_start.date()).days
+        is_multi_day = days_diff >= 1
+
+        # Check if marked as important
+        title = event.get("title", "")
+        important = _is_important(title)
+
+        # Normalize timezone awareness for comparison
+        compare_start = event_start
+        compare_window_end = window_end
+
+        # Convert to naive if there's a mismatch
+        if (event_start.tzinfo is None) != (window_end.tzinfo is None):
+            compare_start = (
+                event_start.replace(tzinfo=None) if event_start.tzinfo else event_start
+            )
+            compare_window_end = (
+                window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
+            )
+
+        # Must start after window AND be multi-day/all-day OR important
+        if (
+            is_multi_day or event.get("allDay") or important
+        ) and compare_start >= compare_window_end:
+            # Create a copy to avoid mutating the original event
+            upcoming_event = dict(event)
+            if important:
+                upcoming_event["title"] = _strip_important_prefix(title)
+                upcoming_event["important"] = True
+            upcoming_events.append(upcoming_event)
+
+    # Sort by date (avoids naive vs aware datetime comparison errors)
+    upcoming_events.sort(key=lambda e: e["start"].date())
+    return upcoming_events[:12]
+
 
 def draw_landscape_upcoming_section(
     draw: ImageDraw.ImageDraw,
@@ -60,44 +142,7 @@ def draw_landscape_upcoming_section(
             font=header_font,
         )
 
-    # Filter upcoming events - beyond the 6-day window
-    window_end = (today + timedelta(days=7)).replace(
-        hour=0, minute=0, second=0, microsecond=0
-    )
-
-    upcoming_events = []
-    for event in events:
-        event_start = event.get("start")
-        event_end = event.get("end")
-        if not event_start or not event_end:
-            continue
-
-        # Check if multi-day or all-day
-        days_diff = (event_end.date() - event_start.date()).days
-        is_multi_day = days_diff >= 1
-
-        # Normalize timezone awareness for comparison
-        compare_start = event_start
-        compare_window_end = window_end
-
-        # Convert to naive if there's a mismatch
-        if (event_start.tzinfo is None) != (window_end.tzinfo is None):
-            compare_start = (
-                event_start.replace(tzinfo=None) if event_start.tzinfo else event_start
-            )
-            compare_window_end = (
-                window_end.replace(tzinfo=None) if window_end.tzinfo else window_end
-            )
-
-        # Must start after window and be multi-day or all-day
-        if (
-            is_multi_day or event.get("allDay")
-        ) and compare_start >= compare_window_end:
-            upcoming_events.append(event)
-
-    # Sort by date (avoids naive vs aware datetime comparison errors)
-    upcoming_events.sort(key=lambda e: e["start"].date())
-    upcoming_events = upcoming_events[:12]  # Max 12 events
+    upcoming_events = filter_upcoming_events(events, today)
 
     # Two-column layout
     col_width = (section_width - 30) / 2
@@ -148,10 +193,10 @@ def draw_landscape_upcoming_section(
                 (title_x, y), truncated_title, fill=COLORS["BLACK"], font=title_font
             )
 
-        # Red bar for multi-day events
+        # Red bar for multi-day or important events
         days_diff = (event["end"].date() - event["start"].date()).days
         is_multi_day = days_diff >= 1
-        if is_red and is_multi_day:
+        if is_red and (is_multi_day or event.get("important")):
             draw.rectangle(
                 [(x - 6, y + 2), (x - 3, y + 16)],
                 fill=COLORS["RED"],
