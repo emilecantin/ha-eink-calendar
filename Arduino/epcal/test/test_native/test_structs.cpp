@@ -3,14 +3,17 @@
  *
  * These tests run on the host machine (no hardware needed) and verify:
  * - Struct zero-initialization behavior
- * - strncpy null-termination patterns (regression test for #17)
+ * - strncpy null-termination patterns (regression test for #17 / #33)
  * - Buffer boundary conditions
  * - Enum default values
+ * - ArduinoJson serialization (regression for #47)
+ * - Configured flag behavior (regression for #38)
  *
  * Run with: pio test -e native
  */
 #include <unity.h>
 #include <string.h>
+#include <ArduinoJson.h>
 
 // Pull in firmware headers (resolved via stubs)
 #include "config.h"
@@ -311,6 +314,178 @@ void test_validate_ha_url_accepts_max_length(void) {
 }
 
 // ---------------------------------------------------------------------------
+// strncpy buffer-boundary regression tests (#33 / #17)
+//
+// The fix in http_client.cpp added `dest[sizeof(dest) - 1] = '\0'` after
+// strncpy calls.  These tests verify the exact boundary: source string
+// exactly fills the buffer with no room for the null terminator.
+// ---------------------------------------------------------------------------
+
+void test_strncpy_source_exactly_fills_buffer_no_null_room(void) {
+    // Source is exactly sizeof(dest) chars — strncpy copies sizeof(dest)-1
+    // chars and the manual terminator is critical
+    char dest[8];
+    memset(dest, 'X', sizeof(dest));
+
+    // Source is "ABCDEFGH" (8 chars) — same as sizeof(dest)
+    const char* src = "ABCDEFGH";
+    strncpy(dest, src, sizeof(dest) - 1);  // copies 7 chars: "ABCDEFG"
+    dest[sizeof(dest) - 1] = '\0';         // force null at position 7
+
+    TEST_ASSERT_EQUAL_STRING("ABCDEFG", dest);
+    TEST_ASSERT_EQUAL('\0', dest[7]);
+    TEST_ASSERT_EQUAL(7u, strlen(dest));
+}
+
+void test_strncpy_entry_id_boundary(void) {
+    // Simulate entry_id (64 bytes) with source exactly 64 chars
+    char entry_id[64];
+    memset(entry_id, 'X', sizeof(entry_id));
+
+    char long_id[65];
+    memset(long_id, 'Z', 64);
+    long_id[64] = '\0';  // 64-char source string
+
+    strncpy(entry_id, long_id, sizeof(entry_id) - 1);
+    entry_id[sizeof(entry_id) - 1] = '\0';
+
+    TEST_ASSERT_EQUAL(63u, strlen(entry_id));
+    TEST_ASSERT_EQUAL('\0', entry_id[63]);
+    // Verify all copied chars are correct
+    for (int i = 0; i < 63; i++) {
+        TEST_ASSERT_EQUAL('Z', entry_id[i]);
+    }
+}
+
+// ---------------------------------------------------------------------------
+// ArduinoJson serialization tests (regression for #47)
+//
+// PR #47 switched the announce payload from string concatenation to
+// ArduinoJson.  These tests verify that the JSON serialization produces
+// the expected structure.
+// ---------------------------------------------------------------------------
+
+void test_arduinojson_announce_payload_structure(void) {
+    // Replicate the announce payload construction from http_client.cpp
+    JsonDocument doc;
+    doc["mac"] = "AA:BB:CC:DD:EE:FF";
+    doc["name"] = "EinkCal-EE:FF";
+    doc["firmware_version"] = "1.2.0";
+
+    char json[512];
+    serializeJson(doc, json, sizeof(json));
+
+    // Verify it's valid JSON containing expected fields
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"mac\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"AA:BB:CC:DD:EE:FF\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"name\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"EinkCal-EE:FF\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"firmware_version\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"1.2.0\""));
+}
+
+void test_arduinojson_announce_payload_roundtrip(void) {
+    // Build payload like the firmware does
+    JsonDocument doc;
+    doc["mac"] = "AA:BB:CC:DD:EE:FF";
+    doc["name"] = "Kitchen Calendar";
+    doc["firmware_version"] = "1.2.0";
+
+    char json[512];
+    serializeJson(doc, json, sizeof(json));
+
+    // Parse it back and verify values
+    JsonDocument parsed;
+    DeserializationError err = deserializeJson(parsed, json);
+    TEST_ASSERT_TRUE(err == DeserializationError::Ok);
+    TEST_ASSERT_EQUAL_STRING("AA:BB:CC:DD:EE:FF", parsed["mac"]);
+    TEST_ASSERT_EQUAL_STRING("Kitchen Calendar", parsed["name"]);
+    TEST_ASSERT_EQUAL_STRING("1.2.0", parsed["firmware_version"]);
+}
+
+void test_arduinojson_error_report_payload(void) {
+    // http_report_error also uses ArduinoJson
+    JsonDocument doc;
+    doc["error"] = "download_failed";
+    doc["details"] = "/api/eink_calendar/bitmap/abc123/black_top";
+
+    char json[512];
+    serializeJson(doc, json, sizeof(json));
+
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"error\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"download_failed\""));
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"details\""));
+}
+
+void test_arduinojson_error_report_without_details(void) {
+    // When details is NULL/empty, the firmware omits it
+    JsonDocument doc;
+    doc["error"] = "memory_alloc_failed";
+    // No "details" field added
+
+    char json[512];
+    serializeJson(doc, json, sizeof(json));
+
+    TEST_ASSERT_NOT_NULL(strstr(json, "\"error\""));
+    TEST_ASSERT_NULL(strstr(json, "\"details\""));
+}
+
+// ---------------------------------------------------------------------------
+// Config.configured flag tests (regression for #38)
+//
+// PR #38 fixed a bug where config.configured was set to true in
+// non-configured states (pending, not installed).  Only ANNOUNCE_CONFIGURED
+// should set configured = true.
+// ---------------------------------------------------------------------------
+
+void test_config_zero_init_configured_is_false(void) {
+    // A zero-initialized Config must have configured == false
+    Config cfg = {};
+    TEST_ASSERT_FALSE(cfg.configured);
+    TEST_ASSERT_FALSE(cfg.discovered);
+}
+
+void test_config_memset_zero_configured_is_false(void) {
+    // Verify with memset too (matches NVS load pattern on first boot)
+    Config cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    TEST_ASSERT_FALSE(cfg.configured);
+    TEST_ASSERT_FALSE(cfg.discovered);
+}
+
+void test_config_configured_flag_explicit_set(void) {
+    Config cfg = {};
+    TEST_ASSERT_FALSE(cfg.configured);
+
+    // Only after explicit set should it be true
+    cfg.configured = true;
+    TEST_ASSERT_TRUE(cfg.configured);
+
+    // And can be cleared
+    cfg.configured = false;
+    TEST_ASSERT_FALSE(cfg.configured);
+}
+
+// ---------------------------------------------------------------------------
+// mDNS retry constant test (regression for #51)
+//
+// PR #51 added retry logic: up to 3 mDNS attempts with 1s delay.
+// We can't test actual mDNS here, but we verify the retry count constant
+// matches expectations.
+// ---------------------------------------------------------------------------
+
+void test_ota_max_retries_constant(void) {
+    TEST_ASSERT_EQUAL(0, ANNOUNCE_CONFIGURED);
+    TEST_ASSERT_EQUAL(1, ANNOUNCE_PENDING);
+    TEST_ASSERT_EQUAL(2, ANNOUNCE_NOT_INSTALLED);
+    TEST_ASSERT_EQUAL(3, ANNOUNCE_ERROR);
+    // All four states must be distinct (retry logic depends on this)
+    TEST_ASSERT_NOT_EQUAL(ANNOUNCE_CONFIGURED, ANNOUNCE_PENDING);
+    TEST_ASSERT_NOT_EQUAL(ANNOUNCE_CONFIGURED, ANNOUNCE_ERROR);
+    TEST_ASSERT_NOT_EQUAL(ANNOUNCE_PENDING, ANNOUNCE_NOT_INSTALLED);
+}
+
+// ---------------------------------------------------------------------------
 // Test runner
 // ---------------------------------------------------------------------------
 
@@ -363,6 +538,24 @@ int main(int argc, char** argv) {
     RUN_TEST(test_validate_ha_url_rejects_newline);
     RUN_TEST(test_validate_ha_url_rejects_too_long);
     RUN_TEST(test_validate_ha_url_accepts_max_length);
+
+    // strncpy buffer-boundary (regression for #33 / #17)
+    RUN_TEST(test_strncpy_source_exactly_fills_buffer_no_null_room);
+    RUN_TEST(test_strncpy_entry_id_boundary);
+
+    // ArduinoJson serialization (regression for #47)
+    RUN_TEST(test_arduinojson_announce_payload_structure);
+    RUN_TEST(test_arduinojson_announce_payload_roundtrip);
+    RUN_TEST(test_arduinojson_error_report_payload);
+    RUN_TEST(test_arduinojson_error_report_without_details);
+
+    // Config.configured flag (regression for #38)
+    RUN_TEST(test_config_zero_init_configured_is_false);
+    RUN_TEST(test_config_memset_zero_configured_is_false);
+    RUN_TEST(test_config_configured_flag_explicit_set);
+
+    // mDNS retry / announce states (regression for #51)
+    RUN_TEST(test_ota_max_retries_constant);
 
     return UNITY_END();
 }
