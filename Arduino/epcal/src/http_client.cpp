@@ -43,9 +43,12 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
   http.addHeader("Content-Type", "application/json");
 
   // Build JSON payload
-  String payload = "{\"mac\":\"" + String(mac) +
-                   "\",\"name\":\"" + String(name) +
-                   "\",\"firmware_version\":\"" + String(fw_version) + "\"}";
+  JsonDocument doc;
+  doc["mac"] = mac;
+  doc["name"] = name;
+  doc["firmware_version"] = fw_version;
+  String payload;
+  serializeJson(doc, payload);
 
   int httpCode = http.POST(payload);
   response.http_code = httpCode;
@@ -67,14 +70,14 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
   String body = http.getString();
   http.end();
 
-  JsonDocument doc;
-  DeserializationError err = deserializeJson(doc, body);
+  JsonDocument resp_doc;
+  DeserializationError err = deserializeJson(resp_doc, body);
   if (err) {
     Serial.printf("JSON parse error: %s\n", err.c_str());
     return response;
   }
 
-  const char* status = doc["status"];
+  const char* status = resp_doc["status"];
   if (!status) {
     Serial.println("No status in response");
     return response;
@@ -83,16 +86,16 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
   if (strcmp(status, "configured") == 0) {
     response.status = ANNOUNCE_CONFIGURED;
 
-    const char* eid = doc["entry_id"];
+    const char* eid = resp_doc["entry_id"];
     if (eid) {
       strncpy(response.entry_id, eid, sizeof(response.entry_id) - 1);
       response.entry_id[sizeof(response.entry_id) - 1] = '\0';
     }
 
-    response.refresh_interval = doc["refresh_interval"] | 15;
+    response.refresh_interval = resp_doc["refresh_interval"] | 15;
 
     // Parse endpoints
-    JsonObject endpoints = doc["endpoints"];
+    JsonObject endpoints = resp_doc["endpoints"];
     if (endpoints) {
       const char* bt = endpoints["black_top"];
       const char* bb = endpoints["black_bottom"];
@@ -110,7 +113,7 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
     }
 
     // Parse OTA firmware update info if present
-    JsonObject fw_update = doc["firmware_update"];
+    JsonObject fw_update = resp_doc["firmware_update"];
     if (fw_update) {
       response.ota.available = true;
       const char* fwVer = fw_update["version"];
