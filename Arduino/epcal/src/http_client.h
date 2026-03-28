@@ -4,6 +4,9 @@
 #include <Arduino.h>
 #include "config.h"
 
+// OTA download buffer size (heap-allocated, must be power of 2 for flash alignment)
+#define OTA_BUFFER_SIZE 4096
+
 // Result of a fetch operation
 enum FetchResult {
   FETCH_OK,            // 200 - new content downloaded

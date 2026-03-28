@@ -21,16 +21,22 @@ static WiFiClient plainClient;
  * (acceptable for LAN-only device communication).
  */
 static void httpBegin(HTTPClient& http, const String& url) {
-  // Stop any previous connection to reset TLS state — the static clients are
-  // reused across calls and stale state can cause handshake failures.
-  secureClient.stop();
-  plainClient.stop();
+  // Only stop the client that was actually used last — stopping both
+  // wastes time and can cause unnecessary TLS teardown overhead.
+  static bool lastWasSecure = false;
+  if (lastWasSecure) {
+    secureClient.stop();
+  } else {
+    plainClient.stop();
+  }
 
   if (url.startsWith("https://")) {
     secureClient.setInsecure();
     http.begin(secureClient, url);
+    lastWasSecure = true;
   } else {
     http.begin(plainClient, url);
+    lastWasSecure = false;
   }
   http.setTimeout(HTTP_TIMEOUT);
 }
@@ -397,7 +403,13 @@ bool http_ota_update(const char* ha_url, const char* ota_path,
 
   WiFiClient* stream = http.getStreamPtr();
   size_t written = 0;
-  uint8_t buf[4096];
+  uint8_t* buf = (uint8_t*)malloc(OTA_BUFFER_SIZE);
+  if (!buf) {
+    Serial.println("OTA: failed to allocate buffer");
+    Update.abort();
+    http.end();
+    return false;
+  }
   unsigned long lastDataTime = millis();
 
   while (http.connected() && written < (size_t)contentLength) {
@@ -406,7 +418,7 @@ bool http_ota_update(const char* ha_url, const char* ota_path,
 
     size_t available = stream->available();
     if (available > 0) {
-      size_t toRead = min(available, sizeof(buf));
+      size_t toRead = min(available, (size_t)OTA_BUFFER_SIZE);
       toRead = min(toRead, (size_t)contentLength - written);
       size_t bytesRead = stream->readBytes(buf, toRead);
       size_t bytesWritten = Update.write(buf, bytesRead);
@@ -415,6 +427,7 @@ bool http_ota_update(const char* ha_url, const char* ota_path,
                       written, Update.errorString());
         Update.abort();
         http.end();
+        free(buf);
         return false;
       }
       written += bytesWritten;
@@ -430,6 +443,7 @@ bool http_ota_update(const char* ha_url, const char* ota_path,
                     written, contentLength);
       Update.abort();
       http.end();
+      free(buf);
       return false;
     }
     yield();
@@ -440,9 +454,11 @@ bool http_ota_update(const char* ha_url, const char* ota_path,
                   written, contentLength);
     Update.abort();
     http.end();
+    free(buf);
     return false;
   }
 
+  free(buf);
   http.end();
 
   if (!Update.end(true)) {
