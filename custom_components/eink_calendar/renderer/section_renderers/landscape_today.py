@@ -229,6 +229,7 @@ def draw_landscape_today_section(
         return (not is_all_day, start.date(), start.replace(tzinfo=None).time())
 
     today_events_with_indicators.sort(key=_sort_key)
+    total_today_events = len(today_events_with_indicators)
     today_events_with_indicators = today_events_with_indicators[:max_events]
 
     max_title_width = event_width - 10
@@ -361,7 +362,6 @@ def draw_landscape_today_section(
     legend_top = section_height - bottom_padding - legend_height
 
     # Overflow indicator
-    total_today_events = len(get_events_for_day(events, today))
     if total_today_events > max_events and is_red:
         more_count = total_today_events - max_events
         y = event_start_y + max_events * event_block_height - 6
