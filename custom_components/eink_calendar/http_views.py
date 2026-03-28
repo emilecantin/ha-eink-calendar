@@ -99,8 +99,15 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                 ):
                     return self.json({"status": "pending"})
 
-            # Rate-limit new discovery flows per MAC
+            # Evict stale entries from the rate-limit dict
             now = time.monotonic()
+            self._recent_announces = {
+                k: v
+                for k, v in self._recent_announces.items()
+                if now - v < self.ANNOUNCE_COOLDOWN
+            }
+
+            # Rate-limit new discovery flows per MAC
             last_announce = self._recent_announces.get(mac, 0)
             if now - last_announce < self.ANNOUNCE_COOLDOWN:
                 return self.json({"status": "pending"})
@@ -130,7 +137,8 @@ class EinkCalendarAnnounceView(HomeAssistantView):
         except Exception as err:
             _LOGGER.error("Error handling announce request: %s", err)
             return self.json(
-                {"status": "error", "message": str(err)}, status_code=500
+                {"status": "error", "message": "Internal server error"},
+                status_code=500,
             )
 
 
@@ -173,6 +181,11 @@ class EinkCalendarBitmapView(HomeAssistantView):
                     entry_mac,
                 )
                 return web.Response(text="Unauthorized", status=403)
+
+            if not entry_mac:
+                _LOGGER.debug(
+                    "MAC check skipped for manual entry %s", entry_id
+                )
 
             # Get coordinator
             coordinator = self.hass.data.get(DOMAIN, {}).get(entry_id)
@@ -296,7 +309,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
         except Exception as err:
             _LOGGER.error("Error serving bitmap: %s", err, exc_info=True)
-            return web.Response(text=f"Internal server error: {err}", status=500)
+            return web.Response(text="Internal server error", status=500)
 
 
 class EinkCalendarErrorView(HomeAssistantView):
@@ -356,7 +369,7 @@ class EinkCalendarErrorView(HomeAssistantView):
 
         except Exception as err:
             _LOGGER.error("Error handling error report: %s", err, exc_info=True)
-            return web.Response(text=f"Internal server error: {err}", status=500)
+            return web.Response(text="Internal server error", status=500)
 
 
 class EinkCalendarFirmwareView(HomeAssistantView):
@@ -421,7 +434,7 @@ class EinkCalendarFirmwareView(HomeAssistantView):
 
         except Exception as err:
             _LOGGER.error("Error serving firmware: %s", err, exc_info=True)
-            return web.Response(text=f"Internal server error: {err}", status=500)
+            return web.Response(text="Internal server error", status=500)
 
 
 def _read_file(path: str) -> bytes:
