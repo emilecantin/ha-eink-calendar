@@ -13,9 +13,9 @@
 #ifndef PREFERENCES_H_STUB
 #define PREFERENCES_H_STUB
 
-#include <cstdint>
-#include <cstddef>
-#include <cstring>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
 
 class Preferences {
 public:

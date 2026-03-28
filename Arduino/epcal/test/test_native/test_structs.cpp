@@ -10,7 +10,7 @@
  * Run with: pio test -e native
  */
 #include <unity.h>
-#include <cstring>
+#include <string.h>
 
 // Pull in firmware headers (resolved via stubs)
 #include "config.h"

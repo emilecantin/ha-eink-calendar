@@ -1,0 +1,5 @@
+pytest
+pillow
+python-dateutil
+pytest-asyncio
+aiohttp

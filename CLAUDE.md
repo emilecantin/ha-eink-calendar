@@ -119,9 +119,25 @@ cd server && npx tsc --noEmit
 ### Testing
 
 ```bash
-# Start HA test environment
-docker-compose up
+# Run ALL tests (unit + ESP native + integration against HA in Docker)
+make test
 
+# Run only Python unit tests
+make test-unit
+
+# Run only ESP32 native tests (PlatformIO)
+make test-esp
+
+# Run only integration tests (starts HA in Docker automatically)
+make test-integration
+
+# Pass extra pytest args
+make test-unit ARGS='-k weather'
+```
+
+#### Manual API testing
+
+```bash
 # Test announce
 curl -X POST http://localhost:8123/api/eink_calendar/announce \
   -H "Content-Type: application/json" \

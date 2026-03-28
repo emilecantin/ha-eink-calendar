@@ -4,8 +4,8 @@
 #ifndef ESP_TASK_WDT_H_STUB
 #define ESP_TASK_WDT_H_STUB
 
-#include <cstdint>
-#include <cstddef>
+#include <stdint.h>
+#include <stddef.h>
 
 typedef int esp_err_t;
 #define ESP_OK 0

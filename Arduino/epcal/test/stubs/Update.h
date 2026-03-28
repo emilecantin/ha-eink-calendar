@@ -4,8 +4,8 @@
 #ifndef UPDATE_H_STUB
 #define UPDATE_H_STUB
 
-#include <cstdint>
-#include <cstddef>
+#include <stdint.h>
+#include <stddef.h>
 
 class UpdateClass {
 public:

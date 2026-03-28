@@ -3,61 +3,103 @@
  *
  * Provides just enough of the Arduino API to compile firmware headers
  * (config.h, http_client.h, display.h) without the real SDK.
+ *
+ * Uses only C standard headers (string.h, stdint.h, etc.) to avoid
+ * C++ stdlib availability issues with PlatformIO's native toolchain
+ * on macOS (Apple Clang may not find <cstring>, <string>, etc.).
  */
 #ifndef ARDUINO_H_STUB
 #define ARDUINO_H_STUB
 
-#include <cstdint>
-#include <cstddef>
-#include <cstring>
-#include <cstdio>
-#include <string>
+#include <stdint.h>
+#include <stddef.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 // --- Arduino type aliases ---
 typedef uint8_t byte;
 typedef bool boolean;
 
 // --- String class (minimal subset used by firmware) ---
+// Uses a fixed-size internal buffer instead of std::string to avoid
+// C++ stdlib dependency.
 class String {
 public:
-    String() : _buf() {}
-    String(const char* s) : _buf(s ? s : "") {}
-    String(const String& other) : _buf(other._buf) {}
+    String() { _buf[0] = '\0'; }
+    String(const char* s) {
+        if (s) {
+            strncpy(_buf, s, sizeof(_buf) - 1);
+            _buf[sizeof(_buf) - 1] = '\0';
+        } else {
+            _buf[0] = '\0';
+        }
+    }
+    String(const String& other) {
+        strncpy(_buf, other._buf, sizeof(_buf) - 1);
+        _buf[sizeof(_buf) - 1] = '\0';
+    }
 
-    const char* c_str() const { return _buf.c_str(); }
-    unsigned int length() const { return (unsigned int)_buf.length(); }
+    const char* c_str() const { return _buf; }
+    unsigned int length() const { return (unsigned int)strlen(_buf); }
 
     String operator+(const String& rhs) const {
-        return String((_buf + rhs._buf).c_str());
+        String result;
+        strncpy(result._buf, _buf, sizeof(result._buf) - 1);
+        result._buf[sizeof(result._buf) - 1] = '\0';
+        size_t len = strlen(result._buf);
+        if (len < sizeof(result._buf) - 1) {
+            strncpy(result._buf + len, rhs._buf, sizeof(result._buf) - 1 - len);
+            result._buf[sizeof(result._buf) - 1] = '\0';
+        }
+        return result;
     }
     String operator+(const char* rhs) const {
-        return String((_buf + rhs).c_str());
+        return *this + String(rhs);
     }
 
     bool startsWith(const char* prefix) const {
-        return _buf.rfind(prefix, 0) == 0;
+        return strncmp(_buf, prefix, strlen(prefix)) == 0;
     }
     bool endsWith(const char* suffix) const {
         if (!suffix) return false;
-        std::string s(suffix);
-        if (s.size() > _buf.size()) return false;
-        return _buf.compare(_buf.size() - s.size(), s.size(), s) == 0;
+        size_t slen = strlen(suffix);
+        size_t blen = strlen(_buf);
+        if (slen > blen) return false;
+        return strcmp(_buf + blen - slen, suffix) == 0;
     }
     void remove(unsigned int index, unsigned int count = 1) {
-        _buf.erase(index, count);
+        size_t len = strlen(_buf);
+        if (index >= len) return;
+        if (index + count >= len) {
+            _buf[index] = '\0';
+        } else {
+            memmove(_buf + index, _buf + index + count, len - index - count + 1);
+        }
     }
 
     String substring(unsigned int from) const {
-        return String(_buf.substr(from).c_str());
+        size_t len = strlen(_buf);
+        if (from >= len) return String("");
+        return String(_buf + from);
     }
     String substring(unsigned int from, unsigned int to) const {
-        return String(_buf.substr(from, to - from).c_str());
+        size_t len = strlen(_buf);
+        if (from >= len) return String("");
+        if (to > len) to = (unsigned int)len;
+        if (to <= from) return String("");
+        String result;
+        size_t count = to - from;
+        if (count >= sizeof(result._buf)) count = sizeof(result._buf) - 1;
+        strncpy(result._buf, _buf + from, count);
+        result._buf[count] = '\0';
+        return result;
     }
 
-    int toInt() const { return std::atoi(_buf.c_str()); }
+    int toInt() const { return atoi(_buf); }
 
 private:
-    std::string _buf;
+    char _buf[512];
 };
 
 // --- Serial stub (no-op) ---
