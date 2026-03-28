@@ -347,7 +347,9 @@ bool tryAnnounce(const char* ha_url) {
 
   if (resp.status == ANNOUNCE_CONFIGURED) {
     strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
+    config.ha_url[sizeof(config.ha_url) - 1] = '\0';
     strncpy(config.entry_id, resp.entry_id, sizeof(config.entry_id) - 1);
+    config.entry_id[sizeof(config.entry_id) - 1] = '\0';
     config.refresh_interval = resp.refresh_interval * 60;  // Convert to seconds
     config.discovered = true;
     config.configured = true;
@@ -368,6 +370,7 @@ bool tryAnnounce(const char* ha_url) {
   if (resp.status == ANNOUNCE_PENDING) {
     // Save this URL so we keep polling the same instance
     strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
+    config.ha_url[sizeof(config.ha_url) - 1] = '\0';
     config.configured = true;
     config_save(&config);
 
@@ -379,6 +382,7 @@ bool tryAnnounce(const char* ha_url) {
   if (resp.status == ANNOUNCE_NOT_INSTALLED) {
     // HA is there but the integration isn't installed yet — save URL, ask user to install
     strncpy(config.ha_url, ha_url, sizeof(config.ha_url) - 1);
+    config.ha_url[sizeof(config.ha_url) - 1] = '\0';
     config.configured = true;
     config_save(&config);
 
@@ -764,6 +768,7 @@ bool updateCalendar() {
     }
     if (i == 0 && resp.new_etag[0] != '\0') {
       strncpy(cache.etag, resp.new_etag, sizeof(cache.etag) - 1);
+      cache.etag[sizeof(cache.etag) - 1] = '\0';
     }
     File f = LittleFS.open(chunk_files[i], FILE_WRITE);
     if (!f) {
