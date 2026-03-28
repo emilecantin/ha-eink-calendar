@@ -21,6 +21,11 @@ static WiFiClient plainClient;
  * (acceptable for LAN-only device communication).
  */
 static void httpBegin(HTTPClient& http, const String& url) {
+  // Stop any previous connection to reset TLS state — the static clients are
+  // reused across calls and stale state can cause handshake failures.
+  secureClient.stop();
+  plainClient.stop();
+
   if (url.startsWith("https://")) {
     secureClient.setInsecure();
     http.begin(secureClient, url);
