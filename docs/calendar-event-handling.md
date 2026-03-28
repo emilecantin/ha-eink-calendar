@@ -34,15 +34,23 @@ corrected inclusive end date and **must not re-apply** this adjustment.
 
 ### How to detect all-day events
 
-All-day events are returned by HA with date-only strings (no `T` time
-component):
+All-day events can arrive in three forms:
+
+1. **Date strings** (most common): `start: "2025-03-25"` — no "T" component
+2. **`date` objects**: Python `date` (not `datetime`) — always all-day
+3. **`datetime` objects at midnight**: Both start and end at 00:00:00 on
+   different days — HA sometimes sends all-day events this way
 
 ```
-start: "2025-03-25"       ← all-day (no "T")
-start: "2025-03-25T09:00" ← timed event (has "T")
+start: "2025-03-25"                  ← all-day (string, no "T")
+start: date(2025, 3, 25)            ← all-day (date object)
+start: datetime(2025, 3, 25, 0, 0)  ← all-day (midnight-to-midnight)
+start: "2025-03-25T09:00"           ← timed event (has "T")
+start: datetime(2025, 3, 25, 9, 0)  ← timed event (non-midnight time)
 ```
 
-In `_process_events()`, this is detected with `"T" not in start_str`.
+In `_process_events()`, detection uses type checks and midnight heuristics
+rather than relying solely on `"T" not in start_str`.
 
 ### Why this keeps coming back
 

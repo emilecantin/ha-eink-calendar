@@ -6,7 +6,7 @@ See docs/calendar-event-handling.md for the full explanation.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from dateutil import parser
@@ -190,8 +190,26 @@ def _process_events(events: list[CalendarEvent]) -> list[CalendarEvent]:
             _LOGGER.warning("Failed to parse event dates: %s", e)
             continue
 
-        # Determine if all-day event (no time component in string)
-        all_day = "T" not in start_str
+        # Determine if all-day event:
+        # - date objects (not datetime): always all-day
+        # - datetime objects at midnight (00:00:00) with end also at midnight
+        #   on a different day: all-day (HA sometimes sends these)
+        # - date strings without "T": all-day
+        # - anything else: timed event
+        if isinstance(start_raw, date) and not isinstance(start_raw, datetime):
+            all_day = True
+        elif (
+            isinstance(start_raw, datetime)
+            and start_raw.hour == 0 and start_raw.minute == 0 and start_raw.second == 0
+            and isinstance(end_raw, datetime)
+            and end_raw.hour == 0 and end_raw.minute == 0 and end_raw.second == 0
+            and start_raw.date() != end_raw.date()
+        ):
+            all_day = True
+        elif isinstance(start_raw, str):
+            all_day = "T" not in start_str
+        else:
+            all_day = False
 
         # All-day events: HA returns exclusive end dates per iCal/RFC 5545.
         # Subtract one day to get the inclusive last day of the event.
