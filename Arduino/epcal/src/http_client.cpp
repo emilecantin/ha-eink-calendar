@@ -32,15 +32,9 @@ static void httpBegin(HTTPClient& http, const String& url) {
 
 AnnounceResponse http_announce(const char* ha_url, const char* mac,
                                const char* name, const char* fw_version) {
-  AnnounceResponse response;
+  AnnounceResponse response = {};
   response.status = ANNOUNCE_ERROR;
-  response.entry_id[0] = '\0';
   response.refresh_interval = 15;
-  response.http_code = 0;
-  response.ota.available = false;
-  response.ota.version[0] = '\0';
-  response.ota.url[0] = '\0';
-  response.ota.size = 0;
 
   HTTPClient http;
   String url = String(ha_url) + "/api/eink_calendar/announce";
@@ -106,13 +100,13 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
       const char* rb = endpoints["red_bottom"];
       const char* ck = endpoints["check"];
 
-      if (bt) strncpy(response.endpoints.black_top, bt, sizeof(response.endpoints.black_top) - 1);
-      if (bb) strncpy(response.endpoints.black_bottom, bb, sizeof(response.endpoints.black_bottom) - 1);
-      if (rt) strncpy(response.endpoints.red_top, rt, sizeof(response.endpoints.red_top) - 1);
-      if (rb) strncpy(response.endpoints.red_bottom, rb, sizeof(response.endpoints.red_bottom) - 1);
-      if (ck) strncpy(response.endpoints.check, ck, sizeof(response.endpoints.check) - 1);
+      if (bt) { strncpy(response.endpoints.black_top, bt, sizeof(response.endpoints.black_top) - 1); response.endpoints.black_top[sizeof(response.endpoints.black_top) - 1] = '\0'; }
+      if (bb) { strncpy(response.endpoints.black_bottom, bb, sizeof(response.endpoints.black_bottom) - 1); response.endpoints.black_bottom[sizeof(response.endpoints.black_bottom) - 1] = '\0'; }
+      if (rt) { strncpy(response.endpoints.red_top, rt, sizeof(response.endpoints.red_top) - 1); response.endpoints.red_top[sizeof(response.endpoints.red_top) - 1] = '\0'; }
+      if (rb) { strncpy(response.endpoints.red_bottom, rb, sizeof(response.endpoints.red_bottom) - 1); response.endpoints.red_bottom[sizeof(response.endpoints.red_bottom) - 1] = '\0'; }
+      if (ck) { strncpy(response.endpoints.check, ck, sizeof(response.endpoints.check) - 1); response.endpoints.check[sizeof(response.endpoints.check) - 1] = '\0'; }
       const char* er = endpoints["error"];
-      if (er) strncpy(response.endpoints.error, er, sizeof(response.endpoints.error) - 1);
+      if (er) { strncpy(response.endpoints.error, er, sizeof(response.endpoints.error) - 1); response.endpoints.error[sizeof(response.endpoints.error) - 1] = '\0'; }
     }
 
     // Parse OTA firmware update info if present
@@ -121,8 +115,8 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
       response.ota.available = true;
       const char* fwVer = fw_update["version"];
       const char* fwUrl = fw_update["url"];
-      if (fwVer) strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1);
-      if (fwUrl) strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1);
+      if (fwVer) { strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1); response.ota.version[sizeof(response.ota.version) - 1] = '\0'; }
+      if (fwUrl) { strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1); response.ota.url[sizeof(response.ota.url) - 1] = '\0'; }
       response.ota.size = fw_update["size"] | 0;
     }
 
@@ -141,16 +135,9 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
 FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
                                   const char* current_etag, const char* mac,
                                   const char* fw_version) {
-  FetchResponse response;
+  FetchResponse response = {};
   response.result = FETCH_ERROR;
-  response.new_etag[0] = '\0';
-  response.http_code = 0;
-  response.bytes_read = 0;
   response.refresh_interval = -1;
-  response.ota.available = false;
-  response.ota.version[0] = '\0';
-  response.ota.url[0] = '\0';
-  response.ota.size = 0;
 
   HTTPClient http;
   String url = String(ha_url) + check_path;
@@ -218,8 +205,8 @@ FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
     response.ota.available = true;
     const char* fwVer = fw_update["version"];
     const char* fwUrl = fw_update["url"];
-    if (fwVer) strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1);
-    if (fwUrl) strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1);
+    if (fwVer) { strncpy(response.ota.version, fwVer, sizeof(response.ota.version) - 1); response.ota.version[sizeof(response.ota.version) - 1] = '\0'; }
+    if (fwUrl) { strncpy(response.ota.url, fwUrl, sizeof(response.ota.url) - 1); response.ota.url[sizeof(response.ota.url) - 1] = '\0'; }
     response.ota.size = fw_update["size"] | 0;
     Serial.printf("Firmware update available: v%s (%u bytes)\n",
                   response.ota.version, response.ota.size);
@@ -236,11 +223,8 @@ FetchResponse http_fetch_chunk(
   uint8_t* buffer,
   size_t buffer_size
 ) {
-  FetchResponse response;
+  FetchResponse response = {};
   response.result = FETCH_ERROR;
-  response.new_etag[0] = '\0';
-  response.http_code = 0;
-  response.bytes_read = 0;
 
   HTTPClient http;
   String url = String(ha_url) + endpoint;
