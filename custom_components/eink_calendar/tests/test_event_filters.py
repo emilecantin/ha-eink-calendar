@@ -204,6 +204,54 @@ class TestGetEventsForDay:
         result = get_events_for_day(events, TODAY)
         assert len(result) == 0
 
+    def test_timed_event_ending_at_midnight_excluded_from_next_day(self):
+        """A timed event from 22:00–00:00 should NOT appear on the next day.
+
+        The event ends exactly at midnight (00:00:00) on Jan 27, which means
+        it does not actually occupy any time on Jan 27.
+        """
+        jan27 = datetime(2026, 1, 27, 10, 0, 0)
+        events = [make_event(
+            title="Late Night Meeting",
+            start=datetime(2026, 1, 26, 22, 0),
+            end=datetime(2026, 1, 27, 0, 0),  # midnight = start of Jan 27
+        )]
+        result = get_events_for_day(events, jan27)
+        assert len(result) == 0, (
+            "Timed event ending at midnight should not appear on the next day"
+        )
+
+    def test_timed_event_ending_at_midnight_included_on_start_day(self):
+        """A timed event from 22:00–00:00 DOES appear on its start day."""
+        events = [make_event(
+            title="Late Night Meeting",
+            start=datetime(2026, 1, 26, 22, 0),
+            end=datetime(2026, 1, 27, 0, 0),
+        )]
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["event"]["title"] == "Late Night Meeting"
+        assert result[0]["startsOnDay"] is True
+
+    def test_allday_multiday_event_spans_correctly(self):
+        """An all-day event spanning multiple days still appears on middle days.
+
+        All-day events use >= for the spans_day check (inclusive end),
+        while timed events use > (exclusive at midnight boundary).
+        """
+        # All-day event from Jan 25 to Jan 27 (inclusive, already adjusted)
+        events = [make_event(
+            title="Multi-day Holiday",
+            start=datetime(2026, 1, 25),
+            end=datetime(2026, 1, 27),
+            allDay=True,
+        )]
+        # Should appear on Jan 26 (middle day)
+        result = get_events_for_day(events, TODAY)
+        assert len(result) == 1
+        assert result[0]["startsOnDay"] is False
+        assert result[0]["endsOnDay"] is False
+
 
 # --- get_collection_icons_for_day ---
 

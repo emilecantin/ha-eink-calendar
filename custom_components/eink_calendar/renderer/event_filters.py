@@ -83,7 +83,13 @@ def get_events_for_day(events: list[CalendarEvent], day: datetime) -> list[Event
         starts_on_day = local_start.date() == day.date()
 
         # Check if event spans this day (started before, ends on/after)
-        spans_day = local_start < day_start and local_end >= day_start
+        # For timed events, use strict > so an event ending exactly at midnight
+        # (00:00:00) does not bleed into the next day.
+        # For all-day events, use >= because their end dates are inclusive.
+        if event.get("allDay"):
+            spans_day = local_start < day_start and local_end >= day_start
+        else:
+            spans_day = local_start < day_start and local_end > day_start
 
         if starts_on_day or spans_day:
             result.append(
