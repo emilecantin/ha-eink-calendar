@@ -1,6 +1,7 @@
 """Font loading utilities."""
 
 import logging
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import ImageFont
@@ -9,14 +10,15 @@ from .types import FontDict, RenderOptions
 
 _LOGGER = logging.getLogger(__name__)
 
-# Font cache
-_font_cache = {}
 
-
+@lru_cache(maxsize=64)
 def load_font(
     font_path: str | None, size: int, weight: str = "Regular"
 ) -> ImageFont.FreeTypeFont:
     """Load a font with caching.
+
+    Cached via functools.lru_cache with bounded size to prevent unbounded
+    memory growth. 64 slots is generous for the ~20 font variants we use.
 
     Args:
         font_path: Path to custom font file, or None to use bundled Inter
@@ -26,11 +28,6 @@ def load_font(
     Returns:
         ImageFont.FreeTypeFont object
     """
-    cache_key = (font_path, size, weight)
-
-    if cache_key in _font_cache:
-        return _font_cache[cache_key]
-
     font = None
 
     # Try custom font path first
@@ -65,7 +62,6 @@ def load_font(
             _LOGGER.error("Failed to load any font: %s", err)
             raise
 
-    _font_cache[cache_key] = font
     return font  # pyright: ignore[reportReturnType]
 
 

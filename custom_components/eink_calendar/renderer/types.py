@@ -6,15 +6,21 @@ from typing import TypedDict
 from PIL import ImageFont
 
 
-class CalendarEvent(TypedDict):
-    """Calendar event dictionary."""
+class CalendarEvent(TypedDict, total=False):
+    """Calendar event dictionary.
 
+    Uses total=False because events are built incrementally in _process_events
+    and not all fields are present on raw HA events vs processed events.
+    """
+
+    id: str
     title: str
     start: datetime
     end: datetime
     allDay: bool
     calendarId: str
     calendarIcon: str
+    calendarName: str
 
 
 class WeatherForecast(TypedDict):
@@ -48,5 +54,9 @@ class RenderOptions(TypedDict, total=False):
     All fields are optional, so total=False is correct here.
     """
 
-    waste_calendars: list[str]  # Note: Using 'waste_calendars' to match actual usage
+    language: str
+    font_regular: str | None
+    font_medium: str | None
+    font_bold: str | None
+    waste_calendars: list[str]
     legend_items: list[dict[str, str]]
