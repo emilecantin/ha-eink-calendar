@@ -10,7 +10,7 @@ from datetime import date, datetime, timedelta
 from io import BytesIO
 
 from dateutil import parser
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw
 
 from .bitmap_utils import calculate_etag, extract_chunk, image_to_1bit
 from .font_loader import get_fonts
@@ -117,11 +117,14 @@ def render_calendar(
     red_img = Image.new("RGB", (width, height), COLORS["WHITE"])
     _draw_all_sections(ImageDraw.Draw(red_img), is_red=True)
 
-    # Create composite preview (black + red on same image)
-    preview_img = Image.new("RGB", (width, height), COLORS["WHITE"])
-    preview_draw = ImageDraw.Draw(preview_img)
-    _draw_all_sections(preview_draw, is_red=False)
-    _draw_all_sections(preview_draw, is_red=True)
+    # Composite preview from the already-rendered black and red layers.
+    # Start with a copy of the black layer, then overlay non-white red pixels.
+    # The mask is binary: 255 where the red layer has any non-white pixel, 0 elsewhere.
+    preview_img = black_img.copy()
+    white_img = Image.new("RGB", (width, height), COLORS["WHITE"])
+    red_diff = ImageChops.difference(red_img, white_img).convert("L")
+    red_mask = red_diff.point(lambda p: 255 if p > 0 else 0)
+    preview_img.paste(red_img, mask=red_mask)
 
     preview_buf = BytesIO()
     preview_img.save(preview_buf, format="PNG")
