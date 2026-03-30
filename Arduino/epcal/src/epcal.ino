@@ -849,6 +849,12 @@ bool updateCalendar() {
   // ETag is saved only after successful display refresh (see below).
   // If display refresh fails/crashes, the device re-downloads next cycle.
 
+  // Shut down WiFi before display refresh to reduce power draw.
+  // The 37-second tri-color refresh is the most power-hungry operation;
+  // running it with the radio off avoids brownout on marginal supplies.
+  WiFi.disconnect(true);
+  WiFi.mode(WIFI_OFF);
+
   display_init();
 
   typedef void (*SendFunc)(const uint8_t*);
@@ -883,9 +889,9 @@ bool updateCalendar() {
 
     Serial.println("Display updated successfully!");
   } else {
+    // WiFi is off — can't report error. The device will retry next cycle
+    // since the ETag was not saved.
     Serial.println("LittleFS read failed during display update");
-    http_report_error(config.ha_url, endpoints.error, mac.c_str(),
-                      "display_update_failed", "LittleFS read error");
   }
 
   display_sleep();
