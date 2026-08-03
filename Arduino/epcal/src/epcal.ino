@@ -18,6 +18,7 @@
 #include "http_client.h"
 #include "display.h"
 #include "url_validation.h"
+#include "diagnostics.h"
 
 // Watchdog timeout in seconds - if the ESP32 hangs longer than this, it reboots
 #define WDT_TIMEOUT 120
@@ -58,6 +59,21 @@ RTC_DATA_ATTR int bootCount = 0;
 RTC_DATA_ATTR int otaFailCount = 0;
 #define OTA_MAX_RETRIES 3
 
+// Boot diagnostics — survive deep sleep, reset on power cycle.
+// currentStage advances as this boot progresses; on the next boot it becomes
+// prevBootStage, which is how we learn where an unexpected reset happened.
+RTC_DATA_ATTR uint8_t currentStage = STAGE_BOOT;
+RTC_DATA_ATTR uint8_t prevBootStage = STAGE_BOOT;
+RTC_DATA_ATTR uint32_t lastSleepSeconds = 0;
+
+// An error that occurred while WiFi was off (during the display refresh), held
+// here until the next boot can report it. Empty string means nothing pending.
+RTC_DATA_ATTR char pendingError[32] = "";
+RTC_DATA_ATTR char pendingErrorDetails[64] = "";
+
+// Diagnostics for this boot, assembled in setup() and sent on every check-in
+DeviceDiagnostics diagnostics;
+
 // TCP listener on port 443 — prevents Android 12+ "connection refused" on HTTPS probes
 WiFiServer httpsRedirectServer(443);
 
@@ -75,6 +91,9 @@ void stopHttpsRedirect();
 void handleHttpsRedirectClients();
 String getDeviceMac();
 String getDeviceName();
+void markStage(BootStage stage);
+void setPendingError(const char* error, const char* details);
+void flushPendingError(const char* mac);
 
 void setup() {
   Serial.begin(115200);
@@ -90,8 +109,29 @@ void setup() {
   esp_task_wdt_add(NULL);
 
   bootCount++;
+
+  // Roll this boot's diagnostics over from the previous one before we start
+  // advancing stages again. A hard brownout can leave RTC memory unreliable
+  // even though the reset reason itself stays trustworthy, so bounds-check it.
+  prevBootStage = (currentStage <= STAGE_SLEEPING) ? currentStage : STAGE_BOOT;
+  currentStage = STAGE_BOOT;
+
+  esp_reset_reason_t resetReason = esp_reset_reason();
+  diagnostics.reset_reason = diag_reset_reason_name(resetReason);
+  diagnostics.last_stage = diag_stage_name(prevBootStage);
+  diagnostics.boot_count = (uint32_t)bootCount;
+  diagnostics.last_sleep_s = lastSleepSeconds;
+  diagnostics.free_heap = ESP.getFreeHeap();
+
   Serial.printf("\n\n=== E-Ink Calendar Boot #%d ===\n", bootCount);
   Serial.printf("MAC: %s\n", getDeviceMac().c_str());
+  Serial.printf("Reset reason: %s | previous boot reached: %s | slept: %us\n",
+                diagnostics.reset_reason, diagnostics.last_stage,
+                diagnostics.last_sleep_s);
+  if (pendingError[0] != '\0') {
+    Serial.printf("Pending error from previous boot: %s (%s)\n",
+                  pendingError, pendingErrorDetails);
+  }
 
   // Initialize setup button pin
   pinMode(SETUP_BUTTON_PIN, INPUT_PULLUP);
@@ -103,6 +143,14 @@ void setup() {
   bool hasConfig = config_load(&config);
   cache_load(&cache);
   bool hasEndpoints = endpoints_load(&endpoints);
+
+  // The stored ETag is the fingerprint we'll send as If-None-Match. It only
+  // persists after a completed refresh, so a device stuck in a retry loop
+  // keeps presenting the same stale fingerprint every boot.
+  diagnostics.display_valid = cache.display_valid;
+  Serial.printf("Stored fingerprint: %s (display_valid: %s)\n",
+                cache.etag[0] != '\0' ? cache.etag : "(none)",
+                cache.display_valid ? "yes" : "no");
 
   Serial.printf("Config loaded: %s\n", hasConfig ? "yes" : "no");
   if (hasConfig) {
@@ -244,6 +292,7 @@ void setup() {
   }
 
   esp_task_wdt_reset();
+  markStage(STAGE_WIFI_CONNECTED);
   Serial.println("WiFi connected!");
   Serial.printf("IP: %s\n", WiFi.localIP().toString().c_str());
 
@@ -289,6 +338,7 @@ void setup() {
       }
     }
   }
+  markStage(STAGE_ANNOUNCED);
 
   // Step 2: Check for calendar updates and refresh display
   if (!updateCalendar()) {
@@ -706,9 +756,15 @@ bool updateCalendar() {
 
   String mac = getDeviceMac();
 
-  // Sync state with HA — sends ETag + firmware version, gets back what changed
+  // Sync state with HA — sends ETag + firmware version + boot diagnostics,
+  // gets back what changed
   FetchResponse checkResponse = http_check_calendar(
-    config.ha_url, endpoints.check, cache.etag, mac.c_str(), FIRMWARE_VERSION);
+    config.ha_url, endpoints.check, cache.etag, mac.c_str(), FIRMWARE_VERSION,
+    &diagnostics);
+
+  // Flush any error from a previous boot that couldn't be reported at the time.
+  // Must come after the check — HA clears the device error on each check-in.
+  flushPendingError(mac.c_str());
 
   // Update refresh interval if HA sent a new one
   // Note: the > 0 guard already excludes zero, so no floor needed
@@ -750,6 +806,8 @@ bool updateCalendar() {
     // No OTA available — reset failure counter (new firmware version may fix things)
     otaFailCount = 0;
   }
+
+  markStage(STAGE_CHECKED);
 
   if (checkResponse.result == FETCH_NOT_MODIFIED) {
     Serial.println("Calendar unchanged, skipping display refresh");
@@ -845,6 +903,8 @@ bool updateCalendar() {
     return false;
   }
 
+  markStage(STAGE_DOWNLOADED);
+
   // --- Phase 2: Init display, read chunks from LittleFS, send ---
   // ETag is saved only after successful display refresh (see below).
   // If display refresh fails/crashes, the device re-downloads next cycle.
@@ -856,6 +916,7 @@ bool updateCalendar() {
   WiFi.mode(WIFI_OFF);
 
   display_init();
+  markStage(STAGE_DISPLAY_INIT);
 
   typedef void (*SendFunc)(const uint8_t*);
   SendFunc send_funcs[] = {
@@ -868,6 +929,8 @@ bool updateCalendar() {
     if (!f || f.read(chunk_buffer, CHUNK_BUFFER_SIZE) != CHUNK_BUFFER_SIZE) {
       Serial.printf("LittleFS read failed: %s\n", chunk_files[i]);
       if (f) f.close();
+      // WiFi is off — stash it so the next boot can report it
+      setPendingError("littlefs_read_failed", chunk_files[i]);
       success = false;
       break;
     }
@@ -881,15 +944,18 @@ bool updateCalendar() {
   LittleFS.end();
 
   if (success) {
+    markStage(STAGE_DISPLAY_SENT);
     Serial.println("Refreshing display...");
     display_refresh();
+    markStage(STAGE_DISPLAY_REFRESHED);
 
     cache.display_valid = true;
     cache_save(&cache);
 
     Serial.println("Display updated successfully!");
   } else {
-    // WiFi is off — can't report error. The device will retry next cycle
+    // WiFi is off — the error was stashed in RTC memory above and will be
+    // reported on the next boot. The device retries next cycle regardless,
     // since the ETag was not saved.
     Serial.println("LittleFS read failed during display update");
   }
@@ -899,11 +965,55 @@ bool updateCalendar() {
 }
 
 /**
+ * Record how far this boot has progressed, in RTC memory.
+ * If the device resets unexpectedly, the next boot reports this as the last
+ * stage reached — the only visibility we have once WiFi is off for the
+ * display refresh.
+ */
+void markStage(BootStage stage) {
+  currentStage = (uint8_t)stage;
+}
+
+/**
+ * Stash an error that can't be reported right now (WiFi is off during the
+ * display refresh). The next boot flushes it to HA via flushPendingError().
+ */
+void setPendingError(const char* error, const char* details) {
+  strncpy(pendingError, error, sizeof(pendingError) - 1);
+  pendingError[sizeof(pendingError) - 1] = '\0';
+  if (details) {
+    strncpy(pendingErrorDetails, details, sizeof(pendingErrorDetails) - 1);
+    pendingErrorDetails[sizeof(pendingErrorDetails) - 1] = '\0';
+  } else {
+    pendingErrorDetails[0] = '\0';
+  }
+}
+
+/**
+ * Report an error left over from a previous boot, then clear it.
+ * Must be called *after* the check request: HA's check handler records a
+ * check-in, which clears the current device error.
+ */
+void flushPendingError(const char* mac) {
+  if (pendingError[0] == '\0') {
+    return;
+  }
+  Serial.printf("Reporting deferred error: %s\n", pendingError);
+  http_report_error(config.ha_url, endpoints.error, mac,
+                    pendingError, pendingErrorDetails);
+  pendingError[0] = '\0';
+  pendingErrorDetails[0] = '\0';
+}
+
+/**
  * Enter deep sleep for specified duration
  */
 void enterDeepSleep(uint32_t seconds) {
   Serial.printf("Entering deep sleep for %d seconds...\n", seconds);
   Serial.flush();
+
+  markStage(STAGE_SLEEPING);
+  lastSleepSeconds = seconds;
 
   // Disable watchdog before sleep
   esp_task_wdt_delete(NULL);

@@ -142,6 +142,50 @@ class EinkCalendarAnnounceView(HomeAssistantView):
             )
 
 
+def _parse_diagnostics(request: web.Request) -> dict:
+    """Extract ESP32 boot diagnostics from check-in request headers.
+
+    Firmware before 1.3.0 doesn't send these, so every field is optional.
+    Values are unauthenticated device input: bad ones are dropped rather than
+    raised, and strings are length-capped so they can't bloat sensor state.
+    """
+    diagnostics: dict = {}
+
+    for header, key in (
+        ("X-Reset-Reason", "reset_reason"),
+        ("X-Last-Stage", "last_stage"),
+    ):
+        value = request.headers.get(header, "").strip()
+        if value:
+            diagnostics[key] = value[:32]
+
+    # The fingerprint the device presented on this attempt. Absent means the
+    # device has no stored ETag at all (fresh install, or cache cleared) —
+    # recorded explicitly so it can't be confused with "unchanged".
+    diagnostics["device_etag"] = (
+        request.headers.get("If-None-Match", "").strip()[:64] or None
+    )
+
+    display_valid = request.headers.get("X-Display-Valid", "").strip()
+    if display_valid in ("0", "1"):
+        diagnostics["display_valid"] = display_valid == "1"
+
+    for header, key in (
+        ("X-Boot-Count", "boot_count"),
+        ("X-Free-Heap", "free_heap"),
+        ("X-Last-Sleep", "last_sleep_s"),
+    ):
+        value = request.headers.get(header, "").strip()
+        if not value:
+            continue
+        try:
+            diagnostics[key] = int(value)
+        except ValueError:
+            _LOGGER.debug("Ignoring malformed %s header: %r", header, value)
+
+    return diagnostics
+
+
 class EinkCalendarBitmapView(HomeAssistantView):
     """Serve bitmap chunks to configured ESP32 devices."""
 
@@ -206,7 +250,8 @@ class EinkCalendarBitmapView(HomeAssistantView):
             if layer == "check":
                 fw_version = request.headers.get("X-Firmware-Version", "")
                 coordinator.record_checkin(
-                    firmware_version=fw_version if fw_version else None
+                    firmware_version=fw_version if fw_version else None,
+                    diagnostics=_parse_diagnostics(request),
                 )
                 await coordinator.async_request_refresh()
                 if not coordinator.last_update_success:
@@ -231,12 +276,21 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 if coordinator.consume_force_refresh():
                     image_changed = True
 
-                if if_none_match:
-                    coordinator.device_etag = if_none_match
+                # Record explicitly, including the no-fingerprint case — a device
+                # that sends nothing must not look like one whose ETag is stale.
+                coordinator.device_etag = if_none_match or "(none)"
+                coordinator.record_check_result(
+                    server_etag=etag, image_changed=image_changed
+                )
 
                 _LOGGER.info(
-                    "Check-in: device_etag=%s, server_etag=%s, match=%s, fw=%s",
+                    "Check-in: device_etag=%s, server_etag=%s, match=%s, fw=%s, "
+                    "reset=%s, last_stage=%s, boot=%s, heap=%s",
                     if_none_match or "(none)", etag, not image_changed, fw_version,
+                    coordinator.last_diagnostics.get("reset_reason", "(none)"),
+                    coordinator.last_diagnostics.get("last_stage", "(none)"),
+                    coordinator.last_diagnostics.get("boot_count", "(none)"),
+                    coordinator.last_diagnostics.get("free_heap", "(none)"),
                 )
 
                 # Check for firmware update

@@ -58,6 +58,7 @@ if _key in sys.modules:
 from custom_components.eink_calendar.http_views import (
     EinkCalendarAnnounceView,
     EinkCalendarBitmapView,
+    _parse_diagnostics,
 )
 
 
@@ -225,3 +226,181 @@ class TestManualEntryMacBypass:
 
         # Should succeed (200) not be rejected
         assert resp.status == 200
+
+
+class TestBootDiagnosticsHeaders:
+    """ESP32 boot diagnostics arrive as headers on the /check request.
+
+    They are unauthenticated device input, so parsing must never raise, and
+    must degrade gracefully for firmware older than 1.3.0 that omits them.
+    """
+
+    def test_parses_full_diagnostics(self):
+        req = _make_request(headers={
+            "X-Reset-Reason": "brownout",
+            "X-Last-Stage": "display_sent",
+            "X-Boot-Count": "42",
+            "X-Free-Heap": "123456",
+            "X-Last-Sleep": "60",
+        })
+
+        assert _parse_diagnostics(req) == {
+            "reset_reason": "brownout",
+            "last_stage": "display_sent",
+            "boot_count": 42,
+            "free_heap": 123456,
+            "last_sleep_s": 60,
+            "device_etag": None,
+        }
+
+    def test_missing_headers_yield_only_null_fingerprint(self):
+        """Firmware < 1.3.0 sends none of these; device_etag is always recorded."""
+        assert _parse_diagnostics(_make_request(headers={})) == {"device_etag": None}
+
+    def test_malformed_numeric_headers_are_dropped(self):
+        req = _make_request(headers={
+            "X-Reset-Reason": "panic",
+            "X-Boot-Count": "not-a-number",
+            "X-Free-Heap": "",
+        })
+
+        result = _parse_diagnostics(req)
+        assert result == {"reset_reason": "panic", "device_etag": None}
+
+    def test_oversized_strings_are_capped(self):
+        req = _make_request(headers={"X-Reset-Reason": "x" * 500})
+        assert len(_parse_diagnostics(req)["reset_reason"]) == 32
+
+    def test_whitespace_only_headers_ignored(self):
+        req = _make_request(headers={"X-Last-Stage": "   "})
+        assert _parse_diagnostics(req) == {"device_etag": None}
+
+    def test_check_passes_diagnostics_to_coordinator(self):
+        """End-to-end: headers on /check reach record_checkin()."""
+        hass = _make_hass()
+        view = EinkCalendarBitmapView(hass)
+
+        entry = MagicMock()
+        entry.domain = "eink_calendar"
+        entry.data = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+        entry.options = {"refresh_interval": 15}
+        entry.entry_id = "entry-1"
+        hass.config_entries.async_get_entry.return_value = entry
+
+        coordinator = MagicMock()
+        rendered = MagicMock()
+        rendered.etag = '"abc123"'
+        coordinator.async_get_rendered = AsyncMock(return_value=rendered)
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.last_update_success = True
+        coordinator.consume_force_refresh.return_value = False
+        coordinator.last_diagnostics = {}
+        hass.data["eink_calendar"] = {"entry-1": coordinator}
+
+        req = _make_request(headers={
+            "X-MAC": "AA:BB:CC:DD:EE:FF",
+            "X-Firmware-Version": "1.3.0",
+            "X-Reset-Reason": "brownout",
+            "X-Last-Stage": "display_sent",
+            "X-Boot-Count": "7",
+        })
+
+        _run(view.get(req, entry_id="entry-1", layer="check"))
+
+        coordinator.record_checkin.assert_called_once_with(
+            firmware_version="1.3.0",
+            diagnostics={
+                "reset_reason": "brownout",
+                "last_stage": "display_sent",
+                "boot_count": 7,
+                "device_etag": None,
+            },
+        )
+
+
+class TestFingerprintHeaders:
+    """The device's fingerprint (If-None-Match) must be recorded on every check."""
+
+    def test_if_none_match_captured_as_device_etag(self):
+        req = _make_request(headers={"If-None-Match": '"abc123"'})
+        assert _parse_diagnostics(req)["device_etag"] == '"abc123"'
+
+    def test_absent_fingerprint_recorded_as_none(self):
+        """A device with no stored ETag must be distinguishable from 'unchanged'."""
+        assert _parse_diagnostics(_make_request(headers={}))["device_etag"] is None
+
+    def test_oversized_fingerprint_capped(self):
+        req = _make_request(headers={"If-None-Match": "x" * 500})
+        assert len(_parse_diagnostics(req)["device_etag"]) == 64
+
+    def test_display_valid_parsed_as_bool(self):
+        assert _parse_diagnostics(
+            _make_request(headers={"X-Display-Valid": "1"})
+        )["display_valid"] is True
+        assert _parse_diagnostics(
+            _make_request(headers={"X-Display-Valid": "0"})
+        )["display_valid"] is False
+
+    def test_malformed_display_valid_dropped(self):
+        req = _make_request(headers={"X-Display-Valid": "maybe"})
+        assert "display_valid" not in _parse_diagnostics(req)
+
+    def test_check_records_result_with_server_etag(self):
+        """The server ETag is attached after the render completes."""
+        hass = _make_hass()
+        view = EinkCalendarBitmapView(hass)
+
+        entry = MagicMock()
+        entry.domain = "eink_calendar"
+        entry.data = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+        entry.options = {"refresh_interval": 15}
+        entry.entry_id = "entry-1"
+        hass.config_entries.async_get_entry.return_value = entry
+
+        coordinator = MagicMock()
+        rendered = MagicMock()
+        rendered.etag = '"server999"'
+        coordinator.async_get_rendered = AsyncMock(return_value=rendered)
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.last_update_success = True
+        coordinator.consume_force_refresh.return_value = False
+        coordinator.last_diagnostics = {}
+        hass.data["eink_calendar"] = {"entry-1": coordinator}
+
+        req = _make_request(headers={
+            "X-MAC": "AA:BB:CC:DD:EE:FF",
+            "If-None-Match": '"device111"',
+        })
+
+        _run(view.get(req, entry_id="entry-1", layer="check"))
+
+        coordinator.record_check_result.assert_called_once_with(
+            server_etag='"server999"', image_changed=True
+        )
+        assert coordinator.device_etag == '"device111"'
+
+    def test_no_fingerprint_recorded_as_none_marker(self):
+        """device_etag must not retain a stale value when none is sent."""
+        hass = _make_hass()
+        view = EinkCalendarBitmapView(hass)
+
+        entry = MagicMock()
+        entry.domain = "eink_calendar"
+        entry.data = {}
+        entry.options = {"refresh_interval": 15}
+        entry.entry_id = "entry-1"
+        hass.config_entries.async_get_entry.return_value = entry
+
+        coordinator = MagicMock()
+        rendered = MagicMock()
+        rendered.etag = '"server999"'
+        coordinator.async_get_rendered = AsyncMock(return_value=rendered)
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.last_update_success = True
+        coordinator.consume_force_refresh.return_value = False
+        coordinator.last_diagnostics = {}
+        hass.data["eink_calendar"] = {"entry-1": coordinator}
+
+        _run(view.get(_make_request(headers={}), entry_id="entry-1", layer="check"))
+
+        assert coordinator.device_etag == "(none)"

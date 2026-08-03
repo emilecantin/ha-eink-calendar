@@ -142,7 +142,8 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
 
 FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
                                   const char* current_etag, const char* mac,
-                                  const char* fw_version) {
+                                  const char* fw_version,
+                                  const DeviceDiagnostics* diag) {
   FetchResponse response = {};
   response.result = FETCH_ERROR;
   response.refresh_interval = -1;
@@ -157,6 +158,18 @@ FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
   http.addHeader("X-Firmware-Version", fw_version);
   if (current_etag && current_etag[0] != '\0') {
     http.addHeader("If-None-Match", current_etag);
+  }
+
+  // Boot diagnostics — these ride along with the check so they reach HA even
+  // when the check itself errors out (a failing check is one of the reasons
+  // the device ends up in a fast retry loop).
+  if (diag) {
+    http.addHeader("X-Reset-Reason", diag->reset_reason);
+    http.addHeader("X-Last-Stage", diag->last_stage);
+    http.addHeader("X-Boot-Count", String(diag->boot_count));
+    http.addHeader("X-Free-Heap", String(diag->free_heap));
+    http.addHeader("X-Last-Sleep", String(diag->last_sleep_s));
+    http.addHeader("X-Display-Valid", diag->display_valid ? "1" : "0");
   }
 
   // Must collect headers before request (for 304 response)

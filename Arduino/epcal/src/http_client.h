@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include "config.h"
+#include "diagnostics.h"
 
 // OTA download buffer size (heap-allocated, must be power of 2 for flash alignment)
 #define OTA_BUFFER_SIZE 4096
@@ -71,11 +72,13 @@ AnnounceResponse http_announce(const char* ha_url, const char* mac,
  * @param current_etag Current stored ETag (empty string if none)
  * @param mac          Device MAC address (for X-MAC header)
  * @param fw_version   Current firmware version (for OTA check)
+ * @param diag         Boot diagnostics to report (NULL to omit)
  * @return             FetchResponse with image/OTA/refresh info
  */
 FetchResponse http_check_calendar(const char* ha_url, const char* check_path,
                                   const char* current_etag, const char* mac,
-                                  const char* fw_version);
+                                  const char* fw_version,
+                                  const DeviceDiagnostics* diag);
 
 /**
  * Fetch a bitmap chunk from the server

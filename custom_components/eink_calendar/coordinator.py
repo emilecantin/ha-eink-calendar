@@ -21,6 +21,7 @@ from .const import (
     CONF_WEATHER_ENTITY,
     DOMAIN,
 )
+from .device_diagnostics import diagnose, is_fingerprint_stuck
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,9 +51,17 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         self._checkin_timestamps: deque = deque(maxlen=10)
         self.checkin_count: int = 0
         self.device_etag: str = "unknown"
+        self.server_etag: str = "unknown"
         self._device_error: str | None = None
         self._is_overdue: bool = False
         self._updating_firmware: bool = False
+        # Diagnostics — retained across check-ins so a reboot loop leaves a trail.
+        # _device_error is cleared on every check-in (it drives the current
+        # status); last_error is not, so the evidence survives the next boot.
+        self._checkin_log: deque = deque(maxlen=20)
+        self.last_diagnostics: dict = {}
+        self.last_error: str | None = None
+        self.last_error_time: datetime | None = None
 
     def on_checkin(self, callback) -> Callable[[], None]:
         """Register a callback for device check-in events.
@@ -66,18 +75,51 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
         return remove
 
-    def record_checkin(self, firmware_version: str | None = None) -> None:
-        """Record a device check-in and notify check-in listeners only."""
-        self.last_checkin = dt_util.now()
-        self._checkin_timestamps.append(self.last_checkin)
+    def record_checkin(
+        self,
+        firmware_version: str | None = None,
+        diagnostics: dict | None = None,
+    ) -> None:
+        """Record a device check-in and notify check-in listeners only.
+
+        ``diagnostics`` carries the boot diagnostics headers sent by the ESP32
+        (reset reason, last stage reached, boot count, free heap). Older
+        firmware omits them, so it may be None or partial.
+        """
+        previous = self._checkin_timestamps[-1] if self._checkin_timestamps else None
+        now = dt_util.now()
+        self.last_checkin = now
+        self._checkin_timestamps.append(now)
         self.checkin_count += 1
         self._device_error = None
         self._is_overdue = False
         self._updating_firmware = False
         if firmware_version is not None:
             self.firmware_version = firmware_version
+        if diagnostics:
+            self.last_diagnostics = diagnostics
+
+        entry: dict = {"time": now.isoformat()}
+        if previous is not None:
+            entry["interval_s"] = round((now - previous).total_seconds())
+        entry.update(diagnostics or {})
+        self._checkin_log.append(entry)
+
         for callback in self._checkin_callbacks:
             callback()
+
+    def record_check_result(self, server_etag: str, image_changed: bool) -> None:
+        """Attach the server-side outcome to the check-in just recorded.
+
+        Split from record_checkin() because the server ETag isn't known until
+        the render completes, which happens after the check-in is logged.
+        """
+        self.server_etag = server_etag
+        if not self._checkin_log:
+            return
+        self._checkin_log[-1].update(
+            server_etag=server_etag, etag_match=not image_changed
+        )
 
     @property
     def device_status(self) -> str:
@@ -96,18 +138,53 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
     def _is_rapid_checkin(self) -> bool:
         """Check if device is checking in much more often than expected."""
-        if len(self._checkin_timestamps) < 5:
+        median_interval = self.median_checkin_interval
+        if median_interval is None:
             return False
+        return median_interval < 0.5 * self.expected_checkin_interval
+
+    @property
+    def median_checkin_interval(self) -> float | None:
+        """Median seconds between recent check-ins, or None if too few."""
+        if len(self._checkin_timestamps) < 5:
+            return None
         timestamps = sorted(self._checkin_timestamps)
         intervals = [
             (timestamps[i + 1] - timestamps[i]).total_seconds()
             for i in range(len(timestamps) - 1)
         ]
-        median_interval = statistics.median(intervals)
-        refresh_interval_seconds = (
-            self.entry.options.get("refresh_interval", 15) * 60
+        return statistics.median(intervals)
+
+    @property
+    def expected_checkin_interval(self) -> float:
+        """Configured refresh interval, in seconds."""
+        return self.entry.options.get("refresh_interval", 15) * 60
+
+    @property
+    def checkin_log(self) -> list[dict]:
+        """Recent check-ins, oldest first."""
+        return list(self._checkin_log)
+
+    @property
+    def fingerprint_stuck(self) -> bool:
+        """True if the device keeps presenting the same outdated ETag."""
+        return is_fingerprint_stuck(self.checkin_log)
+
+    @property
+    def diagnosis(self) -> str:
+        """Plain-language explanation of the device's current behaviour."""
+        return diagnose(
+            reset_reason=self.last_diagnostics.get("reset_reason"),
+            last_stage=self.last_diagnostics.get("last_stage"),
+            is_rapid=self._is_rapid_checkin(),
+            last_error=self.last_error,
+            median_interval=self.median_checkin_interval,
+            expected_interval=self.expected_checkin_interval,
+            fingerprint_stuck=self.fingerprint_stuck,
+            device_etag=self.device_etag,
+            server_etag=self.server_etag,
+            display_valid=self.last_diagnostics.get("display_valid"),
         )
-        return median_interval < 0.5 * refresh_interval_seconds
 
     def record_firmware_update(self) -> None:
         """Record that the device is downloading a firmware update."""
@@ -118,6 +195,10 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
     def record_device_error(self, error: str) -> None:
         """Record an error reported by the device and notify listeners."""
         self._device_error = error
+        # Retained beyond the next check-in so a reboot loop doesn't erase the
+        # only evidence of what went wrong.
+        self.last_error = error
+        self.last_error_time = dt_util.now()
         for callback in self._checkin_callbacks:
             callback()
 

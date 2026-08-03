@@ -164,6 +164,38 @@ class EinkCalendarDeviceStatusSensor(SensorEntity):
             return "mdi:alert"
         return self._STATUS_ICONS.get(status, "mdi:help-circle")
 
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Diagnostics explaining *why* the device is in its current status.
+
+        The status alone can't distinguish a brownout from a crash from a
+        deliberate retry, so the underlying evidence is exposed here.
+        """
+        coordinator = self.coordinator
+        diagnostics = coordinator.last_diagnostics
+        last_error_time = coordinator.last_error_time
+        return {
+            "diagnosis": coordinator.diagnosis,
+            "reset_reason": diagnostics.get("reset_reason"),
+            "last_stage": diagnostics.get("last_stage"),
+            "boot_count": diagnostics.get("boot_count"),
+            "free_heap": diagnostics.get("free_heap"),
+            "last_sleep_s": diagnostics.get("last_sleep_s"),
+            # The fingerprint the device presented on its last attempt, versus
+            # what the server is actually serving.
+            "device_etag": coordinator.device_etag,
+            "server_etag": coordinator.server_etag,
+            "fingerprint_stuck": coordinator.fingerprint_stuck,
+            "display_valid": diagnostics.get("display_valid"),
+            "median_checkin_interval_s": coordinator.median_checkin_interval,
+            "expected_checkin_interval_s": coordinator.expected_checkin_interval,
+            "last_error": coordinator.last_error,
+            "last_error_time": (
+                last_error_time.isoformat() if last_error_time else None
+            ),
+            "recent_checkins": coordinator.checkin_log[-10:],
+        }
+
 
 class EinkCalendarDeviceEtagSensor(SensorEntity):
     """Sensor showing the device's current ETag.

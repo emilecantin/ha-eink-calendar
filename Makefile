@@ -11,9 +11,12 @@ export PLATFORMIO_BUILD_FLAGS = -DFIRMWARE_VERSION='"$(FW_VERSION)"'
 
 # --- Firmware ---
 
+# Firmware targets are scoped to -e esp32dev. The `native` env is test-only
+# (see platformio.ini: it deliberately excludes the firmware sources), so it has
+# no main() and cannot link under `pio run` — it is exercised via `make test-esp`.
 build:
 	@echo "Building firmware v$(FW_VERSION)..."
-	pio run -d $(PIO_DIR)
+	pio run -d $(PIO_DIR) -e esp32dev
 
 bundle: build
 	cp $(FIRMWARE_BIN) $(COMPONENT_DIR)/firmware.bin
@@ -21,10 +24,10 @@ bundle: build
 	@echo "Bundled firmware v$(FW_VERSION) into $(COMPONENT_DIR)/"
 
 upload:
-	pio run -d $(PIO_DIR) -t upload
+	pio run -d $(PIO_DIR) -e esp32dev -t upload
 
 erase:
-	pio run -d $(PIO_DIR) -t erase
+	pio run -d $(PIO_DIR) -e esp32dev -t erase
 
 monitor:
 	pio device monitor -d $(PIO_DIR) -b 115200

@@ -297,3 +297,243 @@ class TestDeviceStatusSensors:
         sensor = EinkCalendarCheckinCountSensor(coord, entry)
         assert sensor.name == "Kitchen Calendar Check-in Count"
         assert sensor.unique_id == f"test-entry-1_{SENSOR_CHECKIN_COUNT_NAME}"
+
+
+class TestCheckinLog:
+    def test_log_records_each_checkin(self):
+        coord = make_coordinator()
+        coord.record_checkin()
+        coord.record_checkin()
+        assert len(coord.checkin_log) == 2
+        assert all("time" in entry for entry in coord.checkin_log)
+
+    def test_first_entry_has_no_interval(self):
+        """Nothing to measure against on the very first check-in."""
+        coord = make_coordinator()
+        coord.record_checkin()
+        assert "interval_s" not in coord.checkin_log[0]
+
+    def test_subsequent_entries_carry_interval(self):
+        coord = make_coordinator()
+        coord.record_checkin()
+        coord.record_checkin()
+        assert "interval_s" in coord.checkin_log[1]
+
+    def test_diagnostics_merged_into_log_entry(self):
+        coord = make_coordinator()
+        coord.record_checkin(
+            diagnostics={"reset_reason": "brownout", "last_stage": "display_sent"}
+        )
+        entry = coord.checkin_log[0]
+        assert entry["reset_reason"] == "brownout"
+        assert entry["last_stage"] == "display_sent"
+
+    def test_log_is_bounded(self):
+        """A device in a reboot loop must not grow state without limit."""
+        coord = make_coordinator()
+        for _ in range(50):
+            coord.record_checkin()
+        assert len(coord.checkin_log) == 20
+
+    def test_last_diagnostics_preserved_when_omitted(self):
+        """A check-in without diagnostics shouldn't wipe the previous ones."""
+        coord = make_coordinator()
+        coord.record_checkin(diagnostics={"reset_reason": "panic"})
+        coord.record_checkin()
+        assert coord.last_diagnostics == {"reset_reason": "panic"}
+
+
+class TestErrorRetention:
+    def test_last_error_survives_next_checkin(self):
+        """The reboot-loop evidence must outlive the reboot that follows it."""
+        coord = make_coordinator()
+        coord.record_device_error("littlefs_read_failed: /rd1.bin")
+        coord.record_checkin()
+
+        # Current status clears, as before...
+        assert coord.device_status == "healthy"
+        # ...but the evidence remains
+        assert coord.last_error == "littlefs_read_failed: /rd1.bin"
+        assert coord.last_error_time is not None
+
+    def test_last_error_starts_empty(self):
+        coord = make_coordinator()
+        assert coord.last_error is None
+        assert coord.last_error_time is None
+
+
+class TestIntervalProperties:
+    def test_median_none_below_threshold(self):
+        coord = make_coordinator()
+        for _ in range(4):
+            coord.record_checkin()
+        assert coord.median_checkin_interval is None
+
+    def test_median_computed_from_timestamps(self):
+        coord = make_coordinator()
+        now = dt_util.now()
+        for i in range(10):
+            coord._checkin_timestamps.append(now - timedelta(seconds=30 * (9 - i)))
+        assert coord.median_checkin_interval == 30
+
+    def test_expected_interval_from_options(self):
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        assert coord.expected_checkin_interval == 900
+
+
+class TestDiagnosis:
+    def test_healthy_device(self):
+        coord = make_coordinator()
+        coord.record_checkin(diagnostics={"reset_reason": "deepsleep"})
+        assert "on schedule" in coord.diagnosis
+
+    def test_brownout_surfaced(self):
+        coord = make_coordinator()
+        coord.record_checkin(
+            diagnostics={"reset_reason": "brownout", "last_stage": "display_sent"}
+        )
+        assert "brownout" in coord.diagnosis
+
+    def test_rapid_clean_reboot_explained(self):
+        """The target scenario: fast check-ins, clean wakes, no screen write."""
+        coord = make_coordinator()
+        now = dt_util.now()
+        for i in range(10):
+            coord._checkin_timestamps.append(now - timedelta(seconds=30 * (9 - i)))
+        coord.checkin_count = 10
+        coord.last_diagnostics = {
+            "reset_reason": "deepsleep",
+            "last_stage": "downloaded",
+        }
+        assert coord.device_status == "rapid_checkin"
+        assert "ETag" in coord.diagnosis
+
+    def test_no_diagnostics_does_not_raise(self):
+        """Firmware older than 1.3.0 sends nothing."""
+        coord = make_coordinator()
+        coord.record_checkin()
+        assert isinstance(coord.diagnosis, str)
+
+
+class TestDeviceStatusAttributes:
+    def test_attributes_expose_diagnostics(self):
+        entry = make_entry()
+        coord = make_coordinator(entry=entry)
+        sensor = EinkCalendarDeviceStatusSensor(coord, entry)
+        coord.record_checkin(
+            diagnostics={
+                "reset_reason": "brownout",
+                "last_stage": "display_sent",
+                "boot_count": 7,
+                "free_heap": 1234,
+            }
+        )
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["reset_reason"] == "brownout"
+        assert attrs["last_stage"] == "display_sent"
+        assert attrs["boot_count"] == 7
+        assert attrs["free_heap"] == 1234
+        assert attrs["expected_checkin_interval_s"] == 900
+        assert "brownout" in attrs["diagnosis"]
+        assert len(attrs["recent_checkins"]) == 1
+
+    def test_attributes_include_retained_error(self):
+        entry = make_entry()
+        coord = make_coordinator(entry=entry)
+        sensor = EinkCalendarDeviceStatusSensor(coord, entry)
+        coord.record_device_error("littlefs_read_failed: /rd1.bin")
+        coord.record_checkin()
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["last_error"] == "littlefs_read_failed: /rd1.bin"
+        assert attrs["last_error_time"] is not None
+
+    def test_attributes_safe_with_no_data(self):
+        entry = make_entry()
+        coord = make_coordinator(entry=entry)
+        sensor = EinkCalendarDeviceStatusSensor(coord, entry)
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["reset_reason"] is None
+        assert attrs["last_error"] is None
+        assert attrs["recent_checkins"] == []
+
+    def test_recent_checkins_capped_at_ten(self):
+        entry = make_entry()
+        coord = make_coordinator(entry=entry)
+        sensor = EinkCalendarDeviceStatusSensor(coord, entry)
+        for _ in range(20):
+            coord.record_checkin()
+        assert len(sensor.extra_state_attributes["recent_checkins"]) == 10
+
+
+class TestFingerprintTracking:
+    def test_check_result_annotates_last_entry(self):
+        coord = make_coordinator()
+        coord.record_checkin(diagnostics={"device_etag": "abc"})
+        coord.record_check_result(server_etag="def", image_changed=True)
+
+        entry = coord.checkin_log[-1]
+        assert entry["device_etag"] == "abc"
+        assert entry["server_etag"] == "def"
+        assert entry["etag_match"] is False
+        assert coord.server_etag == "def"
+
+    def test_match_recorded_when_unchanged(self):
+        coord = make_coordinator()
+        coord.record_checkin(diagnostics={"device_etag": "abc"})
+        coord.record_check_result(server_etag="abc", image_changed=False)
+        assert coord.checkin_log[-1]["etag_match"] is True
+
+    def test_check_result_without_prior_checkin_does_not_raise(self):
+        coord = make_coordinator()
+        coord.record_check_result(server_etag="def", image_changed=True)
+        assert coord.server_etag == "def"
+        assert coord.checkin_log == []
+
+    def test_stuck_fingerprint_detected_through_coordinator(self):
+        coord = make_coordinator()
+        for _ in range(3):
+            coord.record_checkin(diagnostics={"device_etag": "abc"})
+            coord.record_check_result(server_etag="def", image_changed=True)
+        assert coord.fingerprint_stuck is True
+
+    def test_advancing_fingerprint_not_stuck(self):
+        coord = make_coordinator()
+        for tag in ("abc", "def", "ghi"):
+            coord.record_checkin(diagnostics={"device_etag": tag})
+            coord.record_check_result(server_etag="zzz", image_changed=True)
+        assert coord.fingerprint_stuck is False
+
+    def test_diagnosis_names_both_fingerprints(self):
+        coord = make_coordinator()
+        coord.device_etag = "abc"
+        for _ in range(3):
+            coord.record_checkin(
+                diagnostics={"device_etag": "abc", "display_valid": False}
+            )
+            coord.record_check_result(server_etag="def", image_changed=True)
+
+        diagnosis = coord.diagnosis
+        assert "abc" in diagnosis
+        assert "def" in diagnosis
+        assert "never completed a refresh" in diagnosis
+
+    def test_server_etag_defaults_to_unknown(self):
+        coord = make_coordinator()
+        assert coord.server_etag == "unknown"
+
+    def test_attributes_expose_fingerprints(self):
+        entry = make_entry()
+        coord = make_coordinator(entry=entry)
+        sensor = EinkCalendarDeviceStatusSensor(coord, entry)
+        coord.device_etag = "abc"
+        coord.record_checkin(diagnostics={"device_etag": "abc", "display_valid": True})
+        coord.record_check_result(server_etag="def", image_changed=True)
+
+        attrs = sensor.extra_state_attributes
+        assert attrs["device_etag"] == "abc"
+        assert attrs["server_etag"] == "def"
+        assert attrs["display_valid"] is True
+        assert attrs["fingerprint_stuck"] is False

@@ -8,6 +8,7 @@ epcal/
 │   ├── src/
 │   │   ├── epcal.ino           # Main sketch with mDNS + announce flow
 │   │   ├── config.*            # NVS storage for HA URL, entry ID, endpoints
+│   │   ├── diagnostics.h       # Boot stage markers + reset reason names
 │   │   ├── display.*           # E-paper display driver
 │   │   └── http_client.*       # HTTP client with announce + ETag support
 │   └── platformio.ini          # Build config
@@ -15,9 +16,10 @@ epcal/
 │   ├── __init__.py             # Integration entry point
 │   ├── config_flow.py          # Discovery + manual config flow
 │   ├── coordinator.py          # Data coordinator (calendar/weather)
+│   ├── device_diagnostics.py   # Interprets ESP32 boot diagnostics
 │   ├── camera.py               # Preview camera entity
 │   ├── image.py                # Bitmap image entities
-│   ├── sensor.py               # Sensor entities (last update, last check-in, firmware version)
+│   ├── sensor.py               # Sensor entities (last update, last check-in, firmware version, device status + diagnostics)
 │   ├── button.py               # Force refresh button entity
 │   ├── http_views.py           # Announce API + bitmap serving
 │   ├── services.py             # trigger_render + upload_firmware services
@@ -179,9 +181,64 @@ make monitor
 4. If "pending" → show "Waiting for HA" on display, sleep 30s, retry
 5. If "configured" → store entry_id + endpoints
 6. If OTA available → download and flash firmware via `http_ota_update()`, reboot (streaming 4KB buffer with watchdog management and stall detection). OTA has a retry limit of 3 attempts tracked in RTC memory to prevent crash loops.
-7. ETag check (sends `X-Firmware-Version` header) + fetch bitmaps if changed
+7. ETag check (sends `X-Firmware-Version` + boot diagnostics headers) + fetch bitmaps if changed
 8. Download bitmap chunks to LittleFS, then init display and stream from LittleFS to SPI
 9. Deep sleep for refresh_interval
+
+### Debugging a reboot loop (`rapid_checkin`)
+
+`rapid_checkin` is not a firmware state — it's a **derived HA status** meaning the median
+check-in interval is under half `refresh_interval`. It's always a symptom of the ESP32
+rebooting on one of its short-sleep paths (30s announce poll, 60s update retry).
+
+The hard part is the window after `updateCalendar()` shuts down WiFi for the display
+refresh: the device physically cannot report errors there. Two mechanisms cover it:
+
+- **Boot stage markers** (`diagnostics.h`) — `markStage()` writes progress to RTC memory
+  as the boot advances. The *next* boot reports the previous boot's furthest stage as
+  `X-Last-Stage`, so an unexpected reset is localised.
+- **Deferred error reporting** — `setPendingError()` stashes an error in RTC memory;
+  `flushPendingError()` sends it on the next boot, *after* the check request (HA clears
+  the device error on each check-in, so reporting before would be overwritten).
+
+Diagnostics sent as headers on every `/check`: `X-Reset-Reason`, `X-Last-Stage`,
+`X-Boot-Count`, `X-Free-Heap`, `X-Last-Sleep`, `X-Display-Valid`. All optional —
+firmware <1.3.0 omits them.
+
+Read the result from the **Device Status sensor's attributes** in HA (`diagnosis`,
+`reset_reason`, `last_stage`, `last_error`, `device_etag`, `server_etag`,
+`fingerprint_stuck`, `recent_checkins`), or from the boot banner over `make monitor`.
+
+### Fingerprint (ETag) tracking
+
+The fingerprint the device presents is its `If-None-Match` header — the ETag loaded from
+NVS. Every check-in logs `device_etag`, `server_etag` and `etag_match`, because the
+relationship between them is diagnostic:
+
+- **Fingerprint identical across ≥3 check-ins and never matching the server** →
+  `fingerprint_stuck`. The device re-downloads the same image every cycle and never
+  persists the new ETag, which means `display_refresh()` isn't completing.
+  Detected by `is_fingerprint_stuck()` in `device_diagnostics.py`.
+- **Fingerprint advancing** → refreshes are completing; look elsewhere.
+- **`device_etag` is `(none)`** → no stored ETag at all (fresh install, cache cleared, or
+  NVS writes failing). Recorded explicitly so it can't be mistaken for "unchanged".
+- **`display_valid: false`** → the device has *never* completed a refresh, which
+  separates "never worked" from "worked once, broke later".
+
+Note `cache.etag` is set from **chunk 0's** ETag during download, not from the check
+response, and is only persisted by `cache_save()` after a successful refresh.
+
+| `reset_reason` | `last_stage` | Meaning |
+|---|---|---|
+| `brownout` | `display_sent` / `display_init` | Power supply can't sustain the 37s refresh |
+| `task_wdt` / `int_wdt` | `display_*` | Display driver hanging (e.g. "M1 Busy") |
+| `panic` | any | Crash — the stage localises it |
+| `deepsleep` | `downloaded` | Phase-2 LittleFS read failure |
+| `deepsleep` | `checked` | Download failing |
+
+Because `cache_save()` only runs *after* a successful `display_refresh()`, any failure
+past the download means the ETag is never saved and the calendar is re-downloaded every
+cycle — which is what makes these loops fast.
 
 ## Display Specifications
 
