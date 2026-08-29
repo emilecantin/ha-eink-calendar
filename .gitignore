@@ -37,6 +37,7 @@ server/.epcal-config.json
 server/epcal-config.json
 server/.eink-calendar-config.json
 server/eink-calendar-config.json
+server/.env
 server/npm-debug.log*
 server/*.js
 server/*.js.map
