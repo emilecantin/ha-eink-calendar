@@ -1,0 +1,5 @@
+# KiCad per-user UI state, not part of the design
+*.kicad_prl
+*-backups/
+fp-info-cache
+*.lck

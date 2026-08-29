@@ -1,0 +1,10 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "epcal")(type "KiCad")(uri "${KIPRJMOD}/epcal.pretty")(options "")(descr "epcal project footprints"))
+	(lib (name "Connector_JST")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/Connector_JST.pretty")(options "")(descr "JST connectors"))
+	(lib (name "Button_Switch_THT")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/Button_Switch_THT.pretty")(options "")(descr "THT switches"))
+	(lib (name "Resistor_SMD")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/Resistor_SMD.pretty")(options "")(descr "SMD resistors"))
+	(lib (name "Capacitor_SMD")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/Capacitor_SMD.pretty")(options "")(descr "SMD capacitors"))
+	(lib (name "TestPoint")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/TestPoint.pretty")(options "")(descr "Test points"))
+	(lib (name "MountingHole")(type "KiCad")(uri "${KICAD10_FOOTPRINT_DIR}/MountingHole.pretty")(options "")(descr "Mounting holes"))
+)

@@ -1,0 +1,27 @@
+(kicad_symbol_lib
+	(version 20241209)
+	(generator "epcal-gen")
+	(symbol "TP4056_Module"
+    (pin_names (offset 1.016))
+    (exclude_from_sim no) (in_bom yes) (on_board yes)
+    (property "Reference" "U" (at -7.62 11.43 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Value" "TP4056_Module" (at -7.62 -13.97 0) (effects (font (size 1.27 1.27)) (justify left)))
+    (property "Footprint" "epcal:TP4056_Module_03962A" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Datasheet" "" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (property "Description" "TP4056 Li-ion charger module with DW01A/FS8205A protection" (at 0 0 0) (effects (font (size 1.27 1.27)) hide))
+    (symbol "TP4056_Module_0_1"
+      (rectangle (start -7.62 10.16) (end 7.62 -12.7)
+        (stroke (width 0.254) (type default)) (fill (type background)))
+    )
+    (symbol "TP4056_Module_1_1"
+      (pin power_out line (at 12.7 7.62 180) (length 5.08)
+        (name "OUT+" (effects (font (size 1.27 1.27)))) (number "1" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at 12.7 2.54 180) (length 5.08)
+        (name "B+" (effects (font (size 1.27 1.27)))) (number "2" (effects (font (size 1.27 1.27)))))
+      (pin passive line (at 12.7 -2.54 180) (length 5.08)
+        (name "B-" (effects (font (size 1.27 1.27)))) (number "3" (effects (font (size 1.27 1.27)))))
+      (pin power_out line (at 12.7 -7.62 180) (length 5.08)
+        (name "OUT-" (effects (font (size 1.27 1.27)))) (number "4" (effects (font (size 1.27 1.27)))))
+    )
+  )
+)
