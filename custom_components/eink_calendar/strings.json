@@ -39,6 +39,9 @@
           "show_legend": "Show Calendar Legend",
           "weather_entity": "Weather Entity (optional)",
           "refresh_interval": "Refresh Interval (minutes)",
+          "quiet_start": "Quiet Hours Start",
+          "quiet_end": "Quiet Hours End",
+          "quiet_multiplier": "Quiet Hours Interval Multiplier",
           "font_regular": "Custom Regular Font Path (optional)",
           "font_medium": "Custom Medium Font Path (optional)",
           "font_bold": "Custom Bold Font Path (optional)"

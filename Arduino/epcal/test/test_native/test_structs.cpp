@@ -611,6 +611,44 @@ void test_refresh_interval_no_floor_in_updateCalendar(void) {
 }
 
 // ---------------------------------------------------------------------------
+// Commanded sleep interval (RTC one-shot) vs persisted NVS baseline
+// ---------------------------------------------------------------------------
+
+// Mirrors effectiveSleepSeconds() in epcal.ino.
+static uint32_t effective_sleep(uint32_t commanded, uint32_t fallback) {
+    return commanded > 0 ? commanded : fallback;
+}
+
+void test_commanded_interval_wins_over_baseline(void) {
+    TEST_ASSERT_EQUAL_UINT32(7200, effective_sleep(7200, 900));
+}
+
+void test_absent_command_falls_back_to_baseline(void) {
+    // RTC memory is zeroed by a power-on reset, so 0 means "nothing commanded".
+    TEST_ASSERT_EQUAL_UINT32(900, effective_sleep(0, 900));
+}
+
+void test_commanded_interval_survives_as_seconds(void) {
+    // HA sends minutes; the firmware stores seconds.
+    uint32_t minutes[] = {1, 15, 120, 1440};
+    uint32_t expected[] = {60, 900, 7200, 86400};
+    for (int i = 0; i < 4; i++) {
+        TEST_ASSERT_EQUAL_UINT32(expected[i], minutes[i] * 60);
+    }
+}
+
+void test_non_positive_command_is_ignored(void) {
+    // http_client sets refresh_interval to -1 when the header is absent.
+    int server_values[] = {-1, 0};
+    for (int i = 0; i < 2; i++) {
+        uint32_t commanded = server_values[i] > 0
+                                 ? (uint32_t)server_values[i] * 60
+                                 : 0;
+        TEST_ASSERT_EQUAL_UINT32(900, effective_sleep(commanded, 900));
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Chunk buffer size invariants
 // ---------------------------------------------------------------------------
 
@@ -726,6 +764,11 @@ int main(int argc, char** argv) {
     RUN_TEST(test_default_refresh_interval_is_positive);
     RUN_TEST(test_refresh_interval_floor_in_tryAnnounce);
     RUN_TEST(test_refresh_interval_no_floor_in_updateCalendar);
+
+    RUN_TEST(test_commanded_interval_wins_over_baseline);
+    RUN_TEST(test_absent_command_falls_back_to_baseline);
+    RUN_TEST(test_commanded_interval_survives_as_seconds);
+    RUN_TEST(test_non_positive_command_is_ignored);
 
     // Chunk buffer invariants
     RUN_TEST(test_chunk_width_divisible_by_8);

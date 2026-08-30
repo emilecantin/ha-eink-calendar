@@ -8,12 +8,79 @@ import time
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.core import HomeAssistant
+from homeassistant.util import dt as dt_util
 
 import json
 
-from .const import CONF_MAC_ADDRESS, DOMAIN, FIRMWARE_MANAGER_KEY
+from .const import (
+    CONF_MAC_ADDRESS,
+    CONF_QUIET_END,
+    CONF_QUIET_MULTIPLIER,
+    CONF_QUIET_START,
+    CONF_REFRESH_INTERVAL,
+    DEFAULT_QUIET_MULTIPLIER,
+    DEFAULT_REFRESH_INTERVAL,
+    DOMAIN,
+    FIRMWARE_MANAGER_KEY,
+)
+from .interval_policy import (
+    MAX_INTERVAL_MINUTES,
+    MIN_INTERVAL_MINUTES,
+    parse_time_option,
+    resolve_interval,
+)
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _as_number(value, fallback: float) -> float:
+    """A positive number from ``value``, or ``fallback``.
+
+    Config options and entity state can hold anything after a hand-edit or a
+    failed restore. A junk value must degrade to the default rather than raise
+    — a device check-in is not the place to discover a bad config.
+    """
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return fallback
+    return number if number > 0 else fallback
+
+
+def base_interval(entry, coordinator=None) -> int:
+    """The device's baseline interval in minutes, before quiet hours.
+
+    In order of precedence: the Number entity's live value (so automations can
+    move it), the stored config option, then the default.
+
+    This is what the announce response carries. The device persists it to NVS
+    as the fallback it sleeps for when a check-in fails, so it must stay a
+    stable baseline — never a transient quiet-hours value.
+    """
+    stored = _as_number(
+        entry.options.get(CONF_REFRESH_INTERVAL), DEFAULT_REFRESH_INTERVAL
+    )
+    base = _as_number(getattr(coordinator, "base_interval_minutes", None), stored)
+    return max(MIN_INTERVAL_MINUTES, min(MAX_INTERVAL_MINUTES, int(base)))
+
+
+def command_interval(entry, coordinator=None) -> int:
+    """Minutes to command the device to sleep, as of now.
+
+    The baseline with quiet hours applied. This is the per-cycle value sent on
+    every check-in; the device holds it in RTC memory for one sleep only.
+    """
+    base = base_interval(entry, coordinator)
+
+    return resolve_interval(
+        dt_util.now(),
+        base,
+        parse_time_option(entry.options.get(CONF_QUIET_START)),
+        parse_time_option(entry.options.get(CONF_QUIET_END)),
+        _as_number(
+            entry.options.get(CONF_QUIET_MULTIPLIER), DEFAULT_QUIET_MULTIPLIER
+        ),
+    )
 
 
 class EinkCalendarAnnounceView(HomeAssistantView):
@@ -65,8 +132,8 @@ class EinkCalendarAnnounceView(HomeAssistantView):
                     response_data = {
                         "status": "configured",
                         "entry_id": entry.entry_id,
-                        "refresh_interval": entry.options.get(
-                            "refresh_interval", 15
+                        "refresh_interval": base_interval(
+                            entry, coordinator
                         ),
                         "endpoints": {
                             "black_top": f"/api/eink_calendar/bitmap/{entry.entry_id}/black_top",
@@ -265,7 +332,10 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 return web.Response(text="No calendar data available", status=503)
 
             etag = rendered.etag
-            refresh_interval = str(entry.options.get("refresh_interval", 15))
+            # Computed once so the 304 header and the 200 body can never
+            # disagree about how long the device should sleep.
+            commanded_interval = command_interval(entry, coordinator)
+            refresh_interval = str(commanded_interval)
 
             # Check endpoint — sync device state
             if layer == "check":
@@ -282,6 +352,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
                 coordinator.record_check_result(
                     server_etag=etag, image_changed=image_changed
                 )
+                coordinator.record_commanded_interval(commanded_interval)
 
                 _LOGGER.info(
                     "Check-in: device_etag=%s, server_etag=%s, match=%s, fw=%s, "
@@ -312,7 +383,7 @@ class EinkCalendarBitmapView(HomeAssistantView):
 
                 # 200 with JSON body describing what changed
                 response_data = {
-                    "refresh_interval": int(float(refresh_interval)),
+                    "refresh_interval": commanded_interval,
                 }
                 if image_changed:
                     response_data["etag"] = etag

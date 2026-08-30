@@ -183,12 +183,13 @@ make monitor
 6. If OTA available → download and flash firmware via `http_ota_update()`, reboot (streaming 4KB buffer with watchdog management and stall detection). OTA has a retry limit of 3 attempts tracked in RTC memory to prevent crash loops.
 7. ETag check (sends `X-Firmware-Version` + boot diagnostics headers) + fetch bitmaps if changed
 8. Download bitmap chunks to LittleFS, then init display and stream from LittleFS to SPI
-9. Deep sleep for refresh_interval
+9. Deep sleep for the interval HA commanded on this check-in (RTC memory), falling back to the NVS baseline
 
 ### Debugging a reboot loop (`rapid_checkin`)
 
 `rapid_checkin` is not a firmware state — it's a **derived HA status** meaning the median
-check-in interval is under half `refresh_interval`. It's always a symptom of the ESP32
+check-in interval is under half the interval HA **last commanded** (not the configured
+option — see "Dynamic refresh interval" below). It's always a symptom of the ESP32
 rebooting on one of its short-sleep paths (30s announce poll, 60s update retry).
 
 The hard part is the window after `updateCalendar()` shuts down WiFi for the display
@@ -239,6 +240,70 @@ response, and is only persisted by `cache_save()` after a successful refresh.
 Because `cache_save()` only runs *after* a successful `display_refresh()`, any failure
 past the download means the ETag is never saved and the calendar is re-downloaded every
 cycle — which is what makes these loops fast.
+
+## Dynamic refresh interval
+
+HA tells the device how long to sleep on **every** check-in. There is no separate
+protocol for it — the value rides along on the check response:
+
+| Path | Carries the interval as |
+|---|---|
+| 304 Not Modified | `X-Refresh-Interval` header |
+| 200 (something changed) | `refresh_interval` field in the JSON body |
+| announce | `refresh_interval` in the JSON body — **the baseline, not the commanded value** |
+
+The firmware collects the header *before* issuing the request (`http_client.cpp`),
+because a 304 has no body to parse.
+
+### How the value is computed
+
+`interval_policy.resolve_interval()` — kept free of HA imports so it is unit-testable
+in isolation, like `device_diagnostics.py`:
+
+```
+effective = base x (multiplier if inside quiet hours else 1)   clamped to 1..1440
+```
+
+- **base** — `number.eink_calendar_refresh_interval`, a `RestoreNumber` that survives
+  restarts, so automations can change the cadence without an options-flow round trip.
+  Falls back to the `refresh_interval` option, then the default.
+- **quiet hours** — `quiet_start` / `quiet_end` / `quiet_multiplier` config options.
+  The window's start is inclusive and end exclusive, and it wraps midnight
+  (23:00→07:00). `start == end` disables it rather than meaning "all day".
+- The multiplier is floored at 1: quiet hours may only *slow* check-ins, never speed
+  them up, so a misconfigured value can't become a battery-draining fast poll.
+
+The wire format is **integer minutes**, so 1 minute is the finest granularity.
+Rounding is half-up, not Python's banker's rounding — `round(22.5)` returning 22
+is a surprise, and rounding a sleep interval up is the battery-safe direction.
+
+### Baseline vs commanded — why the split matters
+
+| | Source | Stored | Purpose |
+|---|---|---|---|
+| **Baseline** | announce response | NVS (`config.refresh_interval`) | Fallback when a check-in fails |
+| **Commanded** | check response | RTC (`commandedSleepSeconds`) | This cycle's sleep only |
+
+The announce path deliberately sends the **base**, never the quiet-hours value: the
+firmware calls `config_save()` unconditionally on every announce, so a transient
+2 a.m. value would persist as the interval the device sleeps for whenever a check-in
+fails.
+
+The commanded value lives in RTC memory (survives deep sleep, costs no flash) because
+it now changes per cycle. Persisting each change would be ~35k NVS writes/year against
+a ~100k-cycle budget. A power-on reset clears RTC memory to 0, which
+`effectiveSleepSeconds()` reads as "nothing commanded" and falls back to the baseline.
+
+### Both health detectors track the commanded value
+
+`coordinator.expected_checkin_interval` returns what was last commanded, falling back
+to the option before the first check-in. Both detectors depend on it, and both broke
+in *opposite* directions when it read the static option:
+
+- `_is_overdue` — a device correctly sleeping 2h during quiet hours was flagged overdue
+  after 30 minutes.
+- `_is_rapid_checkin` — returning to the 15-minute daytime cadence looked like a reboot
+  loop against a 2h expectation.
 
 ## Display Specifications
 

@@ -16,9 +16,11 @@ from homeassistant.util import dt as dt_util
 
 from .const import (
     CONF_CALENDARS,
+    CONF_REFRESH_INTERVAL,
     CONF_WASTE_CALENDARS,
     CONF_WASTE_ICON_MAP,
     CONF_WEATHER_ENTITY,
+    DEFAULT_REFRESH_INTERVAL,
     DOMAIN,
 )
 from .device_diagnostics import diagnose, is_fingerprint_stuck
@@ -59,6 +61,13 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         # _device_error is cleared on every check-in (it drives the current
         # status); last_error is not, so the evidence survives the next boot.
         self._checkin_log: deque = deque(maxlen=20)
+        # What HA last told the device to sleep for, and the live base the
+        # Number entity owns. Both are in minutes. The commanded value is what
+        # the health detectors judge against — comparing observed gaps to the
+        # static option gives false 'overdue' during quiet hours and false
+        # 'rapid_checkin' on the way back out of them.
+        self._commanded_interval: int | None = None
+        self._base_interval: float | None = None
         self.last_diagnostics: dict = {}
         self.last_error: str | None = None
         self.last_error_time: datetime | None = None
@@ -107,6 +116,27 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
         for callback in self._checkin_callbacks:
             callback()
+
+    @property
+    def base_interval_minutes(self) -> float:
+        """Live base interval in minutes, before quiet hours are applied.
+
+        Seeded from the config option and overridden by the Number entity, so
+        automations can change the cadence without an options-flow round trip.
+        """
+        if self._base_interval is not None:
+            return self._base_interval
+        return self.entry.options.get(
+            CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL
+        )
+
+    @base_interval_minutes.setter
+    def base_interval_minutes(self, value: float | None) -> None:
+        self._base_interval = value
+
+    def record_commanded_interval(self, minutes: int) -> None:
+        """Remember the interval just commanded to the device."""
+        self._commanded_interval = minutes
 
     def record_check_result(self, server_etag: str, image_changed: bool) -> None:
         """Attach the server-side outcome to the check-in just recorded.
@@ -157,8 +187,17 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
 
     @property
     def expected_checkin_interval(self) -> float:
-        """Configured refresh interval, in seconds."""
-        return self.entry.options.get("refresh_interval", 15) * 60
+        """Interval the device was last told to sleep for, in seconds.
+
+        Falls back to the stored option before the first check-in, when
+        nothing has been commanded yet.
+        """
+        if self._commanded_interval is not None:
+            return self._commanded_interval * 60
+        return (
+            self.entry.options.get(CONF_REFRESH_INTERVAL, DEFAULT_REFRESH_INTERVAL)
+            * 60
+        )
 
     @property
     def checkin_log(self) -> list[dict]:
@@ -210,9 +249,7 @@ class EinkCalendarDataCoordinator(DataUpdateCoordinator):
         """Check if device is overdue for a check-in and update state."""
         if self.last_checkin is None:
             return
-        refresh_interval_seconds = (
-            self.entry.options.get("refresh_interval", 15) * 60
-        )
+        refresh_interval_seconds = self.expected_checkin_interval
         elapsed = (dt_util.now() - self.last_checkin).total_seconds()
         was_overdue = self._is_overdue
         self._is_overdue = elapsed > 2 * refresh_interval_seconds

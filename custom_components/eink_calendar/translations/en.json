@@ -23,7 +23,8 @@
       }
     },
     "abort": {
-      "already_configured": "This device is already configured."
+      "already_configured": "This device is already configured.",
+      "no_mac": "Device did not provide a MAC address."
     }
   },
   "options": {
@@ -38,6 +39,9 @@
           "show_legend": "Show Calendar Legend",
           "weather_entity": "Weather Entity (optional)",
           "refresh_interval": "Refresh Interval (minutes)",
+          "quiet_start": "Quiet Hours Start",
+          "quiet_end": "Quiet Hours End",
+          "quiet_multiplier": "Quiet Hours Interval Multiplier",
           "font_regular": "Custom Regular Font Path (optional)",
           "font_medium": "Custom Medium Font Path (optional)",
           "font_bold": "Custom Bold Font Path (optional)"
@@ -47,6 +51,12 @@
         "title": "Waste Collection Icons",
         "description": "Assign an icon to each waste collection type found in your calendar."
       }
+    }
+  },
+  "services": {
+    "trigger_render": {
+      "name": "Trigger Render",
+      "description": "Force a manual re-render of the calendar display."
     }
   }
 }

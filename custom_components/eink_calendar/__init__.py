@@ -25,7 +25,13 @@ from .services import async_setup_services, async_unload_services
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.CAMERA, Platform.IMAGE, Platform.SENSOR]
+PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
+    Platform.CAMERA,
+    Platform.IMAGE,
+    Platform.NUMBER,
+    Platform.SENSOR,
+]
 
 
 def ensure_http_views(hass: HomeAssistant) -> None:

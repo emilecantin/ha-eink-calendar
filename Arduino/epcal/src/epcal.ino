@@ -66,6 +66,14 @@ RTC_DATA_ATTR uint8_t currentStage = STAGE_BOOT;
 RTC_DATA_ATTR uint8_t prevBootStage = STAGE_BOOT;
 RTC_DATA_ATTR uint32_t lastSleepSeconds = 0;
 
+// Sleep duration HA commanded on the last check-in, in seconds. Lives in RTC
+// memory (survives deep sleep, costs no flash) rather than NVS: HA now varies
+// this per cycle for quiet hours, and persisting every change would burn the
+// flash — a value that moves each wake is ~35k writes/year against a ~100k
+// cycle budget. config.refresh_interval stays the NVS baseline, used when
+// nothing has been commanded (power-on reset clears RTC memory to 0).
+RTC_DATA_ATTR uint32_t commandedSleepSeconds = 0;
+
 // An error that occurred while WiFi was off (during the display refresh), held
 // here until the next boot can report it. Empty string means nothing pending.
 RTC_DATA_ATTR char pendingError[32] = "";
@@ -82,6 +90,7 @@ void saveParamsCallback();
 void handleConnectionFailure();
 bool updateCalendar();
 void enterDeepSleep(uint32_t seconds);
+uint32_t effectiveSleepSeconds(uint32_t commanded, uint32_t fallback);
 bool isSetupButtonHeld();
 bool tryAnnounce(const char* ha_url);
 bool discoverAndAnnounce();
@@ -353,7 +362,7 @@ void setup() {
   WiFi.mode(WIFI_OFF);
 
   // Enter deep sleep
-  enterDeepSleep(config.refresh_interval);
+  enterDeepSleep(effectiveSleepSeconds(commandedSleepSeconds, config.refresh_interval));
 }
 
 void loop() {
@@ -766,16 +775,18 @@ bool updateCalendar() {
   // Must come after the check — HA clears the device error on each check-in.
   flushPendingError(mac.c_str());
 
-  // Update refresh interval if HA sent a new one
-  // Note: the > 0 guard already excludes zero, so no floor needed
+  // HA commands the sleep interval on every check-in, and varies it (quiet
+  // hours, automations). Held in RTC memory for this cycle only — see
+  // commandedSleepSeconds. The > 0 guard already excludes zero and the -1
+  // "header absent" sentinel, so no floor is needed.
   if (checkResponse.refresh_interval > 0) {
-    uint32_t new_interval = checkResponse.refresh_interval * 60;
-    if (new_interval != config.refresh_interval) {
-      Serial.printf("Refresh interval updated: %d -> %d minutes\n",
-                    config.refresh_interval / 60, checkResponse.refresh_interval);
-      config.refresh_interval = new_interval;
-      config_save(&config);
+    uint32_t commanded = checkResponse.refresh_interval * 60;
+    if (commanded != commandedSleepSeconds) {
+      Serial.printf("Sleep interval commanded: %lu -> %d minutes\n",
+                    (unsigned long)(commandedSleepSeconds / 60),
+                    checkResponse.refresh_interval);
     }
+    commandedSleepSeconds = commanded;
   }
 
   if (checkResponse.result == FETCH_ERROR) {
@@ -1008,6 +1019,16 @@ void flushPendingError(const char* mac) {
 /**
  * Enter deep sleep for specified duration
  */
+/**
+ * Seconds to sleep: what HA last commanded, else the NVS baseline.
+ *
+ * A commanded value of 0 means nothing has been commanded this power cycle
+ * (RTC memory is cleared by a power-on reset), so the baseline applies.
+ */
+uint32_t effectiveSleepSeconds(uint32_t commanded, uint32_t fallback) {
+  return commanded > 0 ? commanded : fallback;
+}
+
 void enterDeepSleep(uint32_t seconds) {
   Serial.printf("Entering deep sleep for %d seconds...\n", seconds);
   Serial.flush();

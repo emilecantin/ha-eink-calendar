@@ -404,3 +404,150 @@ class TestFingerprintHeaders:
         _run(view.get(_make_request(headers={}), entry_id="entry-1", layer="check"))
 
         assert coordinator.device_etag == "(none)"
+
+
+class TestDynamicRefreshInterval:
+    """HA commands the sleep interval on every check-in, quiet hours included."""
+
+    @staticmethod
+    def _setup(options, etag_match):
+        hass = _make_hass()
+        view = EinkCalendarBitmapView(hass)
+
+        entry = MagicMock()
+        entry.domain = "eink_calendar"
+        entry.data = {"mac_address": "AA:BB:CC:DD:EE:FF"}
+        entry.options = options
+        entry.entry_id = "entry-1"
+        hass.config_entries.async_get_entry.return_value = entry
+
+        coordinator = MagicMock()
+        rendered = MagicMock()
+        rendered.etag = '"abc123"'
+        coordinator.async_get_rendered = AsyncMock(return_value=rendered)
+        coordinator.async_request_refresh = AsyncMock()
+        coordinator.last_update_success = True
+        coordinator.consume_force_refresh.return_value = False
+        coordinator.last_diagnostics = {}
+        coordinator.base_interval_minutes = options.get("refresh_interval", 15)
+        hass.data["eink_calendar"] = {"entry-1": coordinator}
+
+        headers = {"X-MAC": "AA:BB:CC:DD:EE:FF"}
+        if etag_match:
+            headers["If-None-Match"] = '"abc123"'
+        req = _make_request(headers=headers)
+        return view, req, coordinator
+
+    @staticmethod
+    def _at(hour):
+        from datetime import datetime as _dt
+        return _dt(2026, 8, 30, hour, 0)
+
+    QUIET = {
+        "refresh_interval": 15,
+        "quiet_start": "23:00:00",
+        "quiet_end": "07:00:00",
+        "quiet_multiplier": 8,
+    }
+
+    def _run_check(self, options, hour, etag_match):
+        import custom_components.eink_calendar.http_views as hv
+        from unittest.mock import patch
+
+        view, req, coordinator = self._setup(options, etag_match)
+        with patch.object(hv.dt_util, "now", return_value=self._at(hour)):
+            resp = _run(view.get(req, entry_id="entry-1", layer="check"))
+        return resp, coordinator
+
+    def test_304_header_reflects_quiet_hours(self):
+        resp, _ = self._run_check(self.QUIET, hour=2, etag_match=True)
+        assert resp.status == 304
+        assert resp.headers["X-Refresh-Interval"] == "120"
+
+    def test_304_header_outside_quiet_hours_is_base(self):
+        resp, _ = self._run_check(self.QUIET, hour=12, etag_match=True)
+        assert resp.status == 304
+        assert resp.headers["X-Refresh-Interval"] == "15"
+
+    def test_200_body_reflects_quiet_hours(self):
+        resp, _ = self._run_check(self.QUIET, hour=2, etag_match=False)
+        assert resp.status == 200
+        assert json.loads(resp.text)["refresh_interval"] == 120
+
+    def test_both_paths_agree_at_the_same_clock_time(self):
+        """The 304 header and the 200 body must never disagree."""
+        for hour in (2, 12, 23):
+            r304, _ = self._run_check(self.QUIET, hour=hour, etag_match=True)
+            r200, _ = self._run_check(self.QUIET, hour=hour, etag_match=False)
+            assert r304.headers["X-Refresh-Interval"] == str(
+                json.loads(r200.text)["refresh_interval"]
+            ), f"paths disagree at {hour}:00"
+
+    def test_multiplier_of_one_disables_quiet_hours(self):
+        options = dict(self.QUIET, quiet_multiplier=1)
+        resp, _ = self._run_check(options, hour=2, etag_match=True)
+        assert resp.headers["X-Refresh-Interval"] == "15"
+
+    def test_unset_quiet_hours_uses_base(self):
+        resp, _ = self._run_check({"refresh_interval": 15}, hour=2, etag_match=True)
+        assert resp.headers["X-Refresh-Interval"] == "15"
+
+    def test_commanded_interval_is_recorded(self):
+        """Unit 4's health detectors need to know what was actually commanded."""
+        _, coordinator = self._run_check(self.QUIET, hour=2, etag_match=True)
+        coordinator.record_commanded_interval.assert_called_once_with(120)
+
+    def test_malformed_quiet_option_does_not_break_checkin(self):
+        options = dict(self.QUIET, quiet_start="not a time")
+        resp, _ = self._run_check(options, hour=2, etag_match=True)
+        assert resp.status == 304
+        assert resp.headers["X-Refresh-Interval"] == "15"
+
+    def test_entity_base_overrides_stored_option(self):
+        """The Number entity owns the live base, so automations take effect."""
+        view, req, coordinator = self._setup(dict(self.QUIET), etag_match=True)
+        coordinator.base_interval_minutes = 30
+        import custom_components.eink_calendar.http_views as hv
+        from unittest.mock import patch
+        with patch.object(hv.dt_util, "now", return_value=self._at(12)):
+            resp = _run(view.get(req, entry_id="entry-1", layer="check"))
+        assert resp.headers["X-Refresh-Interval"] == "30"
+
+    def test_falls_back_to_stored_option_when_entity_has_no_value(self):
+        """Before the Number entity restores, the configured option still applies."""
+        view, req, coordinator = self._setup(
+            {"refresh_interval": 45}, etag_match=True
+        )
+        coordinator.base_interval_minutes = None
+        import custom_components.eink_calendar.http_views as hv
+        from unittest.mock import patch
+        with patch.object(hv.dt_util, "now", return_value=self._at(12)):
+            resp = _run(view.get(req, entry_id="entry-1", layer="check"))
+        assert resp.headers["X-Refresh-Interval"] == "45"
+
+    def test_junk_base_degrades_to_default(self):
+        view, req, coordinator = self._setup({"refresh_interval": "???"}, etag_match=True)
+        coordinator.base_interval_minutes = "also junk"
+        import custom_components.eink_calendar.http_views as hv
+        from unittest.mock import patch
+        with patch.object(hv.dt_util, "now", return_value=self._at(12)):
+            resp = _run(view.get(req, entry_id="entry-1", layer="check"))
+        assert resp.headers["X-Refresh-Interval"] == "15"
+
+    def test_announce_carries_the_baseline_not_quiet_hours(self):
+        """Announce seeds the device's NVS fallback — it must stay stable.
+
+        A quiet-hours value here would persist as the interval the device
+        sleeps for whenever a check-in fails.
+        """
+        import custom_components.eink_calendar.http_views as hv
+        from unittest.mock import patch
+
+        entry = MagicMock()
+        entry.options = dict(self.QUIET)
+        coordinator = MagicMock()
+        coordinator.base_interval_minutes = 15
+
+        with patch.object(hv.dt_util, "now", return_value=self._at(2)):
+            assert hv.base_interval(entry, coordinator) == 15
+            assert hv.command_interval(entry, coordinator) == 120

@@ -537,3 +537,75 @@ class TestFingerprintTracking:
         assert attrs["server_etag"] == "def"
         assert attrs["display_valid"] is True
         assert attrs["fingerprint_stuck"] is False
+
+
+class TestCommandedIntervalTracking:
+    """Health detectors must judge against what HA actually commanded.
+
+    Once quiet hours vary the interval, comparing observed gaps to the static
+    config option produces false diagnoses in both directions: a long quiet
+    interval looks 'overdue', and returning to the short daytime interval
+    looks like 'rapid_checkin'.
+    """
+
+    def test_base_interval_seeds_from_options(self):
+        coord = make_coordinator(entry=make_entry(refresh_interval=20))
+        assert coord.base_interval_minutes == 20
+
+    def test_base_interval_is_settable(self):
+        coord = make_coordinator(entry=make_entry(refresh_interval=20))
+        coord.base_interval_minutes = 45
+        assert coord.base_interval_minutes == 45
+
+    def test_expected_interval_follows_commanded_value(self):
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.record_commanded_interval(120)
+        assert coord.expected_checkin_interval == 120 * 60
+
+    def test_expected_interval_falls_back_to_option(self):
+        """Before anything is commanded, the stored option still applies."""
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        assert coord.expected_checkin_interval == 15 * 60
+
+    def test_quiet_hours_interval_is_not_overdue(self):
+        """A device correctly sleeping 2h must not be flagged overdue."""
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.record_commanded_interval(120)
+        coord.last_checkin = dt_util.now() - timedelta(minutes=90)
+        coord.evaluate_overdue()
+        assert coord._is_overdue is False
+
+    def test_still_overdue_past_twice_the_commanded_interval(self):
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.record_commanded_interval(120)
+        coord.last_checkin = dt_util.now() - timedelta(minutes=260)
+        coord.evaluate_overdue()
+        assert coord._is_overdue is True
+
+    def test_short_option_does_not_make_a_quiet_device_overdue(self):
+        """The regression this fixes: 15min option, 2h commanded, 90min elapsed."""
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.last_checkin = dt_util.now() - timedelta(minutes=90)
+        coord.record_commanded_interval(120)
+        coord.evaluate_overdue()
+        assert coord._is_overdue is False
+
+    def test_genuine_reboot_loop_still_detected_during_quiet_hours(self):
+        """A 30s loop is still rapid even when a 2h interval was commanded."""
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.record_commanded_interval(120)
+        now = dt_util.now()
+        for i in range(10):
+            coord._checkin_timestamps.append(now - timedelta(seconds=30 * (9 - i)))
+        coord.checkin_count = 10
+        assert coord.device_status == "rapid_checkin"
+
+    def test_daytime_cadence_after_quiet_hours_is_healthy(self):
+        """Returning to a 15min cadence must not read as rapid vs a 2h expectation."""
+        coord = make_coordinator(entry=make_entry(refresh_interval=15))
+        coord.record_commanded_interval(15)
+        now = dt_util.now()
+        for i in range(10):
+            coord._checkin_timestamps.append(now - timedelta(minutes=15 * (9 - i)))
+        coord.checkin_count = 10
+        assert coord.device_status == "healthy"

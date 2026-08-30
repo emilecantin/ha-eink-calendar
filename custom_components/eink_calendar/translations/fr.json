@@ -23,7 +23,8 @@
       }
     },
     "abort": {
-      "already_configured": "Cet appareil est déjà configuré."
+      "already_configured": "Cet appareil est déjà configuré.",
+      "no_mac": "L'appareil n'a pas fourni d'adresse MAC."
     }
   },
   "options": {
@@ -38,6 +39,9 @@
           "show_legend": "Afficher la légende du calendrier",
           "weather_entity": "Entité météo (optionnel)",
           "refresh_interval": "Intervalle de rafraîchissement (minutes)",
+          "quiet_start": "Début des heures calmes",
+          "quiet_end": "Fin des heures calmes",
+          "quiet_multiplier": "Multiplicateur d'intervalle en heures calmes",
           "font_regular": "Chemin de police Regular personnalisée (optionnel)",
           "font_medium": "Chemin de police Medium personnalisée (optionnel)",
           "font_bold": "Chemin de police Bold personnalisée (optionnel)"
@@ -47,6 +51,12 @@
         "title": "Icônes de collecte des déchets",
         "description": "Assignez une icône à chaque type de collecte trouvé dans votre calendrier."
       }
+    }
+  },
+  "services": {
+    "trigger_render": {
+      "name": "Déclencher le rendu",
+      "description": "Forcer un nouveau rendu manuel de l'affichage du calendrier."
     }
   }
 }

@@ -8,6 +8,7 @@ DEFAULT_LAYOUT = "landscape"
 DEFAULT_SHOW_LEGEND = True
 DEFAULT_LANGUAGE = "fr"
 DEFAULT_REFRESH_INTERVAL = 15  # minutes
+DEFAULT_QUIET_MULTIPLIER = 1  # 1 = quiet hours disabled
 
 # Entity naming
 CAMERA_NAME = "preview"
@@ -36,6 +37,9 @@ CONF_MAC_ADDRESS = "mac_address"
 CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_LANGUAGE = "language"
 CONF_REFRESH_INTERVAL = "refresh_interval"
+CONF_QUIET_START = "quiet_start"
+CONF_QUIET_END = "quiet_end"
+CONF_QUIET_MULTIPLIER = "quiet_multiplier"
 CONF_WASTE_ICON_MAP = "waste_icon_map"
 
 # Layout options

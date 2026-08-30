@@ -21,6 +21,9 @@ from .const import (
     CONF_LANGUAGE,
     CONF_LAYOUT,
     CONF_MAC_ADDRESS,
+    CONF_QUIET_END,
+    CONF_QUIET_MULTIPLIER,
+    CONF_QUIET_START,
     CONF_REFRESH_INTERVAL,
     CONF_SHOW_LEGEND,
     CONF_WASTE_CALENDARS,
@@ -29,6 +32,7 @@ from .const import (
     DEFAULT_LANGUAGE,
     DEFAULT_LAYOUT,
     DEFAULT_NAME,
+    DEFAULT_QUIET_MULTIPLIER,
     DEFAULT_REFRESH_INTERVAL,
     DEFAULT_SHOW_LEGEND,
     DOMAIN,
@@ -356,6 +360,31 @@ class EinkCalendarOptionsFlow(config_entries.OptionsFlow):
                             max=1440,
                             step=1,
                             unit_of_measurement="minutes",
+                            mode=selector.NumberSelectorMode.BOX,
+                        ),
+                    ),
+                    vol.Optional(
+                        CONF_QUIET_START,
+                        description={
+                            "suggested_value": options.get(CONF_QUIET_START)
+                        },
+                    ): selector.TimeSelector(),
+                    vol.Optional(
+                        CONF_QUIET_END,
+                        description={
+                            "suggested_value": options.get(CONF_QUIET_END)
+                        },
+                    ): selector.TimeSelector(),
+                    vol.Optional(
+                        CONF_QUIET_MULTIPLIER,
+                        default=options.get(
+                            CONF_QUIET_MULTIPLIER, DEFAULT_QUIET_MULTIPLIER
+                        ),
+                    ): selector.NumberSelector(
+                        selector.NumberSelectorConfig(
+                            min=1,
+                            max=96,
+                            step=0.5,
                             mode=selector.NumberSelectorMode.BOX,
                         ),
                     ),
